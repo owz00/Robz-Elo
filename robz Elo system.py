@@ -11,7 +11,7 @@ import cv2
 def playerProbability(enemyElo, playerElo):
 
     rcf = 1000 #random chance factor
-    subtractElo = (enemyElo - playerElo) / rcf
+    subtractElo = abs(enemyElo - playerElo) / rcf
     probability  =  round(1 / (1 + pow(10, subtractElo)), 4)
 
     return probability 
