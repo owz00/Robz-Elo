@@ -38,8 +38,8 @@ def gamePrediction(playerElo):
     teamBSize = len(teamB)
     teamASize = len(teamA)
     teamBPersonalProbability = [0] * teamBSize
-   #this calculates the probability of each individual players vs each player of the other team
-   #the average for that players if found and then added to the averages of all the othe players on the A team
+   #this calculates the probability of each individual player vs each player of the other team
+   #the average for that player is found and then added to the averages of all the othe players on the A team
    #the probability of A team winning vs B team is then found by averaging the averages of the A team
     for playerA in teamA: 
         personalProbability = 0 
