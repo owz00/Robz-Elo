@@ -81,7 +81,7 @@ def calculatePoints(playerDictionary):
     RA, RB, RP = gamePrediction(playerElo)
     print(RA, RB)
 
-   #this calculates the score gained or lossed for each player
+   #this calculates the score gained or lost for each player
     for player in playerInformation:
         k = 50 / (1 + (player[1]/300))
         if winner == 'B':
