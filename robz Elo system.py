@@ -24,47 +24,42 @@ def gamePrediction(playerElo):
     finalProbability = 0
     teamA = []
     teamB = []
-  
+    averageChanceofWinning = []
+   
 #this adds the elo to the correct team
-    i = 0
     for players in playerElo:
+        print(players)
         if players[0] == 'B':
-           item = (players[1], i)
-           teamB.append(item)
+           teamB.append(players[1])
         elif players[0] == 'A':
-           item = (players[1], i)
-           teamA.append(item)
+           teamA.append(players[1])
         else:
            print("incorrect team in array")
-        i += 1   
-    ##print(teamB)       
     teamBSize = len(teamB)
     teamASize = len(teamA)
     teamBPersonalProbability = [0] * teamBSize
-    averageChanceofWinning = [0] * (teamBSize + teamASize)
-   #this calculates the probability of each individual players vs each player of the other team
-   #the average for that players if found and then added to the averages of all the othe players on the A team
+   #this calculates the probability of each individual player vs each player of the other team
+   #the average for that player is found and then added to the averages of all the othe players on the A team
    #the probability of A team winning vs B team is then found by averaging the averages of the A team
     for playerA in teamA: 
         personalProbability = 0 
+        i = 0
         for playerB in teamB:
-           print(playerB[0], playerB[1])
-           p = playerProbability(playerB[0] , playerA[0])
-           
-           personalProbability += p #this calculates for every A players
+           p = playerProbability(playerB , playerA)
+           personalProbability += p
            opposingProbability  = abs(1 - p)/teamBSize
-           averageChanceofWinning[playerB[1]] += opposingProbability #this holds chance for every B players 
-
+           teamBPersonalProbability[i] += opposingProbability
+           i += 1
         overallProbability += personalProbability / teamBSize
-        averageChanceofWinning[playerA[1]] = personalProbability / teamBSize
-
+        averageChanceofWinning.append(personalProbability / teamBSize) 
     finalProbability = overallProbability / teamASize
+    averageChanceofWinning = averageChanceofWinning + teamBPersonalProbability
     teamAProbability = finalProbability
     teamBProbability = abs(1 - finalProbability)
 
     return teamAProbability, teamBProbability, averageChanceofWinning
 
-#when i find their probability i put it in the right indedx
+
 def calculatePoints(playerDictionary):
    
     teamAScore = round(playerDictionary['TeamAPoints'][0])
@@ -86,7 +81,7 @@ def calculatePoints(playerDictionary):
     RA, RB, RP = gamePrediction(playerElo)
     print(RA, RB)
 
-   #this calculates the score gained or lossed for each player
+   #this calculates the score gained or lost for each player
     for player in playerInformation:
         k = 50 / (1 + (player[1]/300))
         if winner == 'B':
