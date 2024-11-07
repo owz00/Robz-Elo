@@ -10,6 +10,8 @@ import json
 import sys
 from anthropic import Anthropic
 from config import API_KEYS
+from io import BytesIO
+
 #this programme is based on this article
 #https://towardsdatascience.com/developing-an-elo-based-data-driven-ranking-system-for-2v2-multiplayer-games-7689f7d42a53
 
@@ -17,12 +19,13 @@ def parse_game_score(image_path):
     """
     Uses Claude API to parse game score images and return structured data
     """
+    
     # Read and encode image
     try:
         with open(image_path, "rb") as image_file:
             image_data = base64.b64encode(image_file.read()).decode("utf-8")
     except Exception as e:
-        print(f"Error reading image file: {str(e)}")
+        print(f"Error processing image file: {str(e)}")
         return None
 
     # Determine media type based on file extension
@@ -36,53 +39,65 @@ def parse_game_score(image_path):
 
     client = Anthropic(api_key=API_KEYS['claude'])
     
-    # Prepare the prompt
+    # Prepare the prompt with role assignment and few-shot examples
     prompt = """
-    You are given a text extracted from a game score sheet. Your task is to parse the text and provide the information in a structured JSON format. Please follow these instructions carefully:
+    You are a data extraction assistant with perfect vision and excellent attention to detail. 
+    Your task is to parse the provided game score sheet image and extract the information into 
+    a structured JSON format. Please follow these instructions carefully:
 
-    1. Extract the data from the text, paying close attention to accuracy in player names and scores.
+    1. Extract the data from the image, ensuring high accuracy in player names and scores. 
+       Implement fuzzy matching for player names that may have up to one character difference 
+       (e.g., one letter off). Correct or account for such minor discrepancies.
+
     2. The data to extract includes:
-    - For each team (Allies and Axis):
-        - List of player names under the 'Player' column.
-        - Team's total victory points from the 'Victory P.' column.
-        - Each player's individual score from the 'Score' column.
+       - For each team (Allies and Axis):
+         - List of player names under the 'Player' column.
+         - Team's total victory points from the 'Victory P.' column.
+         - Each player's individual score from the 'Score' column.
+
     3. Organize the data into the following JSON structure:
 
     {
-    "teams": {
+      "teams": {
         "ALLIES": {
-        "victory_points": <integer>,
-        "players": [
+          "victory_points": <integer>,
+          "players": [
             {
-            "name": "<player_name>",
-            "score": <integer>
+              "name": "<player_name>",
+              "score": <integer>
             },
             ...
-        ]
+          ]
         },
         "AXIS": {
-        "victory_points": <integer>,
-        "players": [
+          "victory_points": <integer>,
+          "players": [
             {
-            "name": "<player_name>",
-            "score": <integer>
+              "name": "<player_name>",
+              "score": <integer>
             },
             ...
-        ]
+          ]
         }
-    },
-    "winner": "<ALLIES or AXIS based on higher victory_points>"
+      },
+      "winner": "<ALLIES or AXIS or TIE based on higher victory_points>"
     }
 
     4. Ensure all numeric values are integers.
-    5. If any data is missing or cannot be read, indicate it with a null value in the JSON.
-    6. The winner field should contain "ALLIES" if Allies victory points are higher, "AXIS" if Axis victory points are higher, or "TIE" if they are equal.
 
-    Provide only the JSON output and no additional text.
+    5. If any data is missing or cannot be read, indicate it with a null value in the JSON.
+
+    6. The winner field should contain "ALLIES" if Allies victory points are higher, 
+       "AXIS" if Axis victory points are higher, or "TIE" if they are equal.
+
+    **Instructions:**
+
+    - Provide only the JSON output and no additional text.
+    - Think step by step, analyze every part of the image carefully before providing the final JSON output.
     """
 
     try:
-        # Send image to Claude
+        # Send image and prompt to Claude
         message = client.messages.create(
             model="claude-3-5-sonnet-latest",
             max_tokens=1024,
@@ -106,12 +121,11 @@ def parse_game_score(image_path):
         )
 
         # Parse JSON response
-        parsed_data = json.loads(message.content[0].text)
+        parsed_data = json.loads(message.content[0].text.strip())
         
-        print(f"Parsed claude data: {parsed_data}")
+        print(f"Parsed Claude data: {parsed_data}")
         
         return parsed_data
-
 
     except Exception as e:
         print(f"Error parsing game score: {str(e)}")
@@ -230,24 +244,24 @@ def main():
     
     # This function parses the image and returns a dictionary with the game results
     # Example output:
-    """ == GAME RESULTS ===
+    """ === GAME RESULTS ===
 
-    ALLIES (169 VP)
-    ----------------------------------------
-    Starfy          Score: 1435
-    ShadowFalcon    Score: 931
-    MrCoffee        Score: 36
-    Bapoivre        Score: 12
+        ALLIES (169 VP)
+        ----------------------------------------
+        Starly          Score: 1435
+        ShadowFalcon    Score: 931
+        MrCoffee        Score: 36
+        Bapoivre        Score: 12
 
-    AXIS (167 VP)
-    ----------------------------------------
-    The Grinch      Score: 828
-    Danielo1375     Score: 220
-    Nick            Score: 164
-    Mawcin_ka       Score: 49
+        AXIS (167 VP)
+        ----------------------------------------
+        The Grinch      Score: 828
+        Danielo1375     Score: 220
+        Nick            Score: 164
+        Mawcin_ka       Score: 49
 
-    WINNER: ALLIES
-    ======================================== """
+        WINNER: ALLIES
+        ======================================== """
     
     game_result_dictionary = parse_game_score(image_path)
     
@@ -265,7 +279,7 @@ def main():
     print(f"\nWINNER: {game_result_dictionary['winner']}")
     print("=" * 40 + "\n")
 
-    df = pd.read_csv("RobzElo.csv")
+    """ df = pd.read_csv("RobzElo.csv")
     dictionary = df.to_dict('list')
     
     newPlayerElo, RB, RA, RP = calculatePoints(dictionary)
@@ -275,7 +289,7 @@ def main():
     dictionary['RP'] = RP
     
     data_frame = pd.DataFrame(dictionary)
-    data_frame.to_csv('newElo.csv', index=False)
+    data_frame.to_csv('newElo.csv', index=False) """
 
 
 if __name__ == "__main__":
