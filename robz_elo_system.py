@@ -21,7 +21,30 @@ NUM_ATTEMPTS = 1  # Number of times to send the image to Claude for consensus
 def get_majority_value(values):
     """
     Returns the value that appears most frequently in the list.
-    If there is a tie, returns one of the most common values.
+
+    If there is a tie (multiple values with the same highest frequency), it returns one of them.
+
+    **Parameters:**
+    - `values` (list): A list of values (can be of any type that is hashable).
+
+    **Returns:**
+    - The most frequent value in the list. If the list is empty, returns `None`.
+
+    **Example:**
+
+    ```python
+    values = [1, 2, 2, 3, 3, 3]
+    result = get_majority_value(values)
+    print(result)  # Output: 3
+
+    values = ['apple', 'banana', 'apple', 'orange']
+    result = get_majority_value(values)
+    print(result)  # Output: 'apple'
+
+    values = []
+    result = get_majority_value(values)
+    print(result)  # Output: None
+    ```
     """
     counter = Counter(values)
     if not counter:
@@ -32,14 +55,32 @@ def get_majority_value(values):
     top_values = [val for val, count in most_common if count == max_count]
     return top_values[0]  # Return one of the top values
 
+
 def similar(a, b):
     """Return a similarity ratio between two strings."""
     return SequenceMatcher(None, a, b).ratio()
 
 def group_similar_names(names, threshold=0.8):
     """
-    Groups similar names based on a similarity threshold.
-    Returns a list of groups, where each group is a list of names.
+    Groups similar names together based on a similarity threshold.
+
+    Names that are similar (similarity ratio above the threshold) are placed in the same group.
+
+    **Parameters:**
+    - `names` (list of str): A list of names to group.
+    - `threshold` (float): The similarity threshold between 0 and 1. Default is 0.8.
+
+    **Returns:**
+    - A list of groups, where each group is a list of similar names.
+
+    **Example:**
+
+    ```python
+    names = ["John", "Jon", "Johnny", "Jane", "Janet"]
+    groups = group_similar_names(names)
+    print(groups)
+    # Output: [['John', 'Jon', 'Johnny'], ['Jane', 'Janet']]
+    ```
     """
     groups = []
     for name in names:
@@ -55,9 +96,72 @@ def group_similar_names(names, threshold=0.8):
 
 def compute_consensus(parsed_data_list):
     """
-    Computes the consensus of a list of parsed_data dictionaries.
-    Applies consensus to every part of the final dictionary.
-    Preserves the original ordering of players.
+    Combines multiple parsed data dictionaries into a single consensus dictionary.
+
+    This function goes through each piece of data (like the winner, team names, player names, and scores)
+    and selects the most frequently occurring value among all the parsed data.
+
+    **Parameters:**
+    - `parsed_data_list` (list of dict): A list of dictionaries containing parsed game data.
+
+    **Returns:**
+    - A single dictionary representing the consensus of the input data.
+
+    **How It Works:**
+    - Collects all team names and uses them to organize the consensus.
+    - For each team, it computes the consensus victory points and player information.
+    - Uses `get_majority_value` to find the most common value.
+    - Uses `group_similar_names` to group and consensus player names.
+
+    **Example:**
+
+    ```python
+    parsed_data_list = [
+        {
+            'winner': 'Team A',
+            'teams': {
+                'Team A': {
+                    'victory_points': 10,
+                    'players': [{'name': 'Alice', 'score': 100}]
+                },
+                'Team B': {
+                    'victory_points': 8,
+                    'players': [{'name': 'Bob', 'score': 90}]
+                }
+            }
+        },
+        {
+            'winner': 'Team A',
+            'teams': {
+                'Team A': {
+                    'victory_points': 10,
+                    'players': [{'name': 'Alicia', 'score': 100}]
+                },
+                'Team B': {
+                    'victory_points': 8,
+                    'players': [{'name': 'Robert', 'score': 90}]
+                }
+            }
+        },
+    ]
+
+    consensus = compute_consensus(parsed_data_list)
+    print(consensus)
+    # Output:
+    # {
+    #   'winner': 'Team A',
+    #   'teams': {
+    #     'Team A': {
+    #       'victory_points': 10,
+    #       'players': [{'name': 'Alice', 'score': 100}]
+    #     },
+    #     'Team B': {
+    #       'victory_points': 8,
+    #       'players': [{'name': 'Bob', 'score': 90}]
+    #     }
+    #   }
+    # }
+    ```
     """
     consensus_data = {}
 
@@ -121,9 +225,37 @@ def compute_consensus(parsed_data_list):
 
 def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
     """
-    Uses Claude API to parse game score images and return structured data.
+    Parses a game score image using the Claude API and returns structured data.
+
+    This function reads an image of a game score sheet, processes it, and sends it to the Claude API for parsing.
+    It attempts to extract team names, player names, scores, and victory points.
+
+    **Parameters:**
+    - `image_path` (str): The file path to the game score image.
+    - `num_attempts` (int): Number of times to send the image to Claude for consensus (default is `NUM_ATTEMPTS`).
+
+    **Returns:**
+    - A dictionary containing the consensus data extracted from the image. Includes team information and winner.
+
+    **How It Works:**
+    - Determines the media type based on the image file extension.
+    - Reads and processes the image (resizing or cropping) to meet size constraints.
+    - Encodes the image in base64 format.
+    - Sends the image and a prompt to the Claude API.
+    - Parses the JSON response and collects data from multiple attempts.
+    - Computes consensus data using `compute_consensus`.
+
+    **Example:**
+
+    ```python
+    result = parse_game_score('game_scores/score_sheet.jpg')
+    if result:
+        print("Parsed Data:")
+        print(result)
+    else:
+        print("Failed to parse the game score.")
+    ```
     """
-    
     # Determine media type based on file extension
     media_type = "image/jpeg"  # default
     if image_path.lower().endswith(".png"):
