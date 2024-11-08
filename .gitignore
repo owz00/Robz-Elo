@@ -1,3 +1,8 @@
+# General
+/.vscode
+
+# Elo System
 newElo.csv
-config.py
+/config.py
 __pycache__
+game_results.json
