@@ -6,15 +6,17 @@ import os
 import base64
 import json
 import sys
+import numpy as np
+from PIL import Image
 from anthropic import Anthropic
-from config import API_KEYS
+from llm_config import API_KEYS
 from io import BytesIO
 from collections import Counter
 from difflib import SequenceMatcher  # For fuzzy string matching
 from datetime import datetime  # Added import
 
 # Configuration variable
-NUM_ATTEMPTS = 5  # Number of times to send the image to Claude for consensus
+NUM_ATTEMPTS = 1  # Number of times to send the image to Claude for consensus
 
 def get_majority_value(values):
     """
@@ -59,16 +61,19 @@ def compute_consensus(parsed_data_list):
     """
     consensus_data = {}
 
+    # Collect all team names from parsed data
+    team_names = set()
+    for pd in parsed_data_list:
+        if 'teams' in pd:
+            team_names.update(pd['teams'].keys())
+
     # Consensus for 'winner'
-    # Collect all 'winner' values from parsed_data_list
     winner_values = [pd.get('winner') for pd in parsed_data_list if pd.get('winner') is not None]
-    # Compute the majority value
     consensus_data['winner'] = get_majority_value(winner_values)
 
-    # Consensus for 'teams'
     consensus_data['teams'] = {}
 
-    for team_name in ['ALLIES', 'AXIS']:
+    for team_name in team_names:
         # Collect all team data for this team
         team_data_list = [
             pd['teams'][team_name] for pd in parsed_data_list
@@ -85,13 +90,10 @@ def compute_consensus(parsed_data_list):
         consensus_data['teams'][team_name] = {'victory_points': consensus_victory_points}
 
         # Consensus for 'players'
-        # We will process players per position to preserve ordering
-        # First, determine the maximum number of players
         max_players = max(len(team_data.get('players', [])) for team_data in team_data_list)
         consensus_players = []
 
         for position in range(max_players):
-            # Collect names and scores at this position from all attempts
             names_at_position = []
             scores_at_position = []
             for team_data in team_data_list:
@@ -104,18 +106,15 @@ def compute_consensus(parsed_data_list):
                         names_at_position.append(name)
                     if score is not None:
                         scores_at_position.append(score)
-            # Compute consensus name and score for this position
             if names_at_position:
-                # Group similar names
                 grouped_names = group_similar_names(names_at_position)
-                # Choose the largest group
                 largest_group = max(grouped_names, key=lambda g: len(g))
                 consensus_name = get_majority_value(largest_group)
             else:
                 consensus_name = None
             consensus_score = get_majority_value(scores_at_position) if scores_at_position else None
             consensus_players.append({'name': consensus_name, 'score': consensus_score})
-        # Assign the consensus players to the team
+
         consensus_data['teams'][team_name]['players'] = consensus_players
 
     return consensus_data
@@ -124,6 +123,7 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
     """
     Uses Claude API to parse game score images and return structured data.
     """
+    
     # Determine media type based on file extension
     media_type = "image/jpeg"  # default
     if image_path.lower().endswith(".png"):
@@ -141,21 +141,35 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
     Your task is to parse the provided game score sheet image and extract the information into
     a structured JSON format. Please follow these instructions carefully:
 
-    1. Extract the data from the image, ensuring high accuracy in player names and scores.
-       Implement fuzzy matching for player names that may have up to one character difference
+    1. **Extract the data from the image**, ensuring high accuracy in team names, player names, and scores.
+       Implement fuzzy matching for team names and player names that may have up to one character difference
        (e.g., one letter off). Correct or account for such minor discrepancies.
 
-    2. The data to extract includes:
-       - For each team (Allies and Axis):
-         - List of player names under the 'Player' column.
-         - Team's total victory points from the 'Victory P.' column.
-         - Each player's individual score from the 'Score' column.
+    2. **Team Names**: The team names can be any of the following factions, generic names like "Team A" or "Team B", or any combination thereof.
 
-    3. Organize the data into the following JSON structure:
+       **Factions List**:
+       - U.S. Army
+       - Wehrmacht  
+       - Red Army
+       - Commonwealth
+       - Imperial Japan
+       - Kampfgruppe Ost
+       - Waffen-SS
+       - Guards Army
+
+    3. **Data to Extract**:
+       - For **each team**:
+         - The **team's name**
+         - **List of player names** under the 'Player' column (excluding entries that match the team name)
+         - Team's total **victory points** from the 'Victory P.' column
+         - Each player's individual **score** from the 'Score' column
+         - Note: Team total scores should not be included as player scores or tracked as a player
+
+    4. **Organize the data into the following JSON structure**:
 
     {
       "teams": {
-        "ALLIES": {
+        "<team_name_1>": {
           "victory_points": <integer>,
           "players": [
             {
@@ -165,8 +179,8 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
             ...
           ]
         },
-        "AXIS": {
-          "victory_points": <integer>,
+        "<team_name_2>": {
+          "victory_points": <integer>, 
           "players": [
             {
               "name": "<player_name>",
@@ -176,20 +190,18 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
           ]
         }
       },
-      "winner": "<ALLIES or AXIS or TIE based on higher victory_points>"
+      "winner": "<team_name of the team with higher victory_points, or 'TIE' if they are equal>"
     }
 
-    4. Ensure all numeric values are integers.
+    5. Ensure all numeric values are integers.
 
-    5. If any data is missing or cannot be read, indicate it with a null value in the JSON.
-
-    6. The winner field should contain "ALLIES" if Allies victory points are higher,
-       "AXIS" if Axis victory points are higher, or "TIE" if they are equal.
+    6. If any data is missing or cannot be read, indicate it with a null value in the JSON.
 
     **Instructions:**
-
-    - Provide only the JSON output and no additional text.
-    - Think step by step, analyze every part of the image carefully before providing the final JSON output.
+    - Provide only the JSON output and no additional text
+    - Think step by step, analyze every part of the image carefully before providing the final JSON output
+    - Do not include team total scores as individual player scores
+    - Do not include entries where player name matches team name
     """
 
     parsed_data_list = []
@@ -199,6 +211,8 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
             print(f"\n{'='*50}")
             print(f"Attempt {attempt + 1}")
             print(f"{'='*50}")
+            
+            print(f'Parsing game score from: {image_path}')
 
             # Read the original image using PIL
             original_image = Image.open(image_path)
@@ -330,7 +344,6 @@ def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
     # Include all attempt data in consensus_data for later analysis
     consensus_data['attempts_data'] = parsed_data_list
 
-    print(f"Consensus data: {consensus_data}")
     return consensus_data
 
 def playerProbability(enemyElo, playerElo):
@@ -339,89 +352,47 @@ def playerProbability(enemyElo, playerElo):
     probability  =  round(1 / (1 + pow(10, subtractElo)), 4)
     return probability 
 
-<<<<<<< HEAD
 
 def gamePrediction(playerDictionary):
+    teams = sorted(playerDictionary.keys())  # Sort team names for consistent ordering
+    if len(teams) != 2:
+        print("Error: There must be exactly two teams.")
+        return playerDictionary
 
-=======
-def gamePrediction(playerElo):
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
-    personalProbability  = 0 
+    teamA_name, teamB_name = teams
+    teamA = playerDictionary[teamA_name]['players']
+    teamB = playerDictionary[teamB_name]['players']
+    teamA_size = len(teamA)
+    teamB_size = len(teamB)
+
     overallProbability = 0
-    finalProbability = 0
-
-<<<<<<< HEAD
-    teamA = playerDictionary['ATeam']['players']
-    teamB = playerDictionary['BTeam']['players']
-    teamBSize = len(teamB)
-    teamASize = len(teamA)
-
+    averageChanceOfWinning = [0] * teamB_size
     updateA = []
     updateB = []
-    
 
-    averageChanceofWinning = [0] * teamBSize
-   #this calculates the probability of each individual players vs each player of the other team
-   #the average for that players if found and then added to the averages of all the othe players on the A team
-   #the probability of A team winning vs B team is then found by averaging the averages of the A team
-=======
-    # Adds the elo to the correct team
-    i = 0
-    for players in playerElo:
-        if players[0] == 'B':
-            teamB.append((players[1], i))
-        elif players[0] == 'A':
-            teamA.append((players[1], i))
-        else:
-            print("Incorrect team in array")
-        i += 1   
+    for playerA in teamA:
+        personalProbability = 0
+        for i, playerB in enumerate(teamB):
+            p = playerProbability(playerB[1], playerA[1])
+            personalProbability += p
+            opposingProbability = (1 - p) / teamB_size
+            averageChanceOfWinning[i] += opposingProbability
 
-    teamBSize = len(teamB)
-    teamASize = len(teamA)
-    averageChanceofWinning = [0] * (teamBSize + teamASize)
-
-    # Calculates the probability of each individual player vs each player of the other team
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
-    for playerA in teamA: 
-        personalProbability = 0 
-        i = 0
-        for playerB in teamB:
-<<<<<<< HEAD
-           p = playerProbability(playerB[1] , playerA[1])
-           personalProbability += p #this calculates for every A players
-           opposingProbability = abs(1 - p)/teamBSize
-           averageChanceofWinning[i] += opposingProbability
-           i += 1
-=======
-            p = playerProbability(playerB[0] , playerA[0])
-            personalProbability += p  # For each A player
-            opposingProbability  = abs(1 - p)/teamBSize
-            averageChanceofWinning[playerB[1]] += opposingProbability  # For each B player
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
-
-        overallProbability += personalProbability / teamBSize
-        playerA = list(playerA)
-        playerA.append(personalProbability / teamBSize)
+        overallProbability += personalProbability / teamB_size
+        playerA.append(personalProbability / teamB_size)
         updateA.append(playerA)
-       
-    for playerB in teamB:
-        playerB = list(playerB)
-        playerB.append(averageChanceofWinning[teamB.index(playerB)])
+
+    for i, playerB in enumerate(teamB):
+        playerB.append(averageChanceOfWinning[i])
         updateB.append(playerB)
-       
-     
 
-    finalProbability = overallProbability / teamASize
+    finalProbability = overallProbability / teamA_size
 
-    #teamAProbability = finalProbability
-    #teamBProbability = abs(1 - finalProbability)
+    playerDictionary[teamA_name]['winProbability'] = finalProbability
+    playerDictionary[teamB_name]['winProbability'] = 1 - finalProbability
+    playerDictionary[teamA_name]['players'] = updateA
+    playerDictionary[teamB_name]['players'] = updateB
 
-    playerDictionary['ATeam']['winProbability'] = finalProbability
-    playerDictionary['BTeam']['winProbability'] = abs(1 - finalProbability)
-    playerDictionary['ATeam']['players'] =  updateA
-    playerDictionary['BTeam']['players'] =  updateB
-
-<<<<<<< HEAD
     return playerDictionary
 
 
@@ -430,53 +401,38 @@ def gamePrediction(playerElo):
 
 #when i find their probability i put it in the right index
 def calculatePoints(playerDictionary):
-   
-    teamAScore = playerDictionary['ATeam']['Points']
-    teamBScore = playerDictionary['BTeam']['Points']
-=======
-def calculatePoints(playerDictionary):
-    teamAScore = round(playerDictionary['TeamAPoints'][0])
-    teamBScore  = round(playerDictionary['TeamBPoints'][0])
-    playerElo = list(zip(playerDictionary['team'], playerDictionary['playerElo']))
-    playerInformation = list(zip(playerDictionary['playerElo'], 
-                                 playerDictionary['gamesPlayed'], 
-                                 playerDictionary['team'],))
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
+    teams = sorted(playerDictionary.keys())  # Sort team names
+    if len(teams) != 2:
+        print("Error: There must be exactly two teams.")
+        return playerDictionary
 
-    pointFactor = 2 + pow((math.log((abs(teamAScore - teamBScore)) + 1, 10)), 3)
+    teamA_name, teamB_name = teams
+    teamAScore = playerDictionary[teamA_name]['Points']
+    teamBScore = playerDictionary[teamB_name]['Points']
+
+    # Use absolute difference to calculate pointFactor
+    pointFactor = 2 + pow((math.log(abs(teamAScore - teamBScore) + 1, 10)), 3)
 
     if teamAScore > teamBScore:
-        winner = 'A'
+        winner = teamA_name
+    elif teamBScore > teamAScore:
+        winner = teamB_name
     else:
-        winner = 'B'
+        winner = 'TIE'
 
-    newPlayerElo = []
     updatedPlayerDictionary = gamePrediction(playerDictionary)
+    RA = updatedPlayerDictionary[teamA_name]['winProbability']
 
-    RA = updatedPlayerDictionary['ATeam']['winProbability']
-    RB = updatedPlayerDictionary['BTeam']['winProbability']
-    print(RA, RB)
-
-<<<<<<< HEAD
-   #this calculates the score gained or lost for each player
-    for player in updatedPlayerDictionary['ATeam']['players']:
-        k = 50 / (1 + (player[2]/300))
-        if winner == 'A':
-            newRating = player[1] + ((k*pointFactor) * (1 - RA))
-        elif winner == 'B':
-            newRating = player[1] + ((k*pointFactor) * (0 - RA))
-        else:
-            print("error")
+    for player in updatedPlayerDictionary[teamA_name]['players']:
+        k = 50 / (1 + (player[2] / 300))
+        actual_score = 1 if winner == teamA_name else (0.5 if winner == 'TIE' else 0)
+        newRating = player[1] + (k * pointFactor) * (actual_score - RA)
         player.append(round(newRating))
-    
-    for player in updatedPlayerDictionary['BTeam']['players']:
-        k = 50 / (1 + (player[2]/300))
-        if winner == 'A':
-            newRating = player[1] + ((k*pointFactor) * (0 - RA))
-        elif winner == 'B':
-            newRating = player[1] + ((k*pointFactor) * (1 - RA))
-        else:
-            print("error")
+
+    for player in updatedPlayerDictionary[teamB_name]['players']:
+        k = 50 / (1 + (player[2] / 300))
+        actual_score = 1 if winner == teamB_name else (0.5 if winner == 'TIE' else 0)
+        newRating = player[1] + (k * pointFactor) * (actual_score - (1 - RA))
         player.append(round(newRating))
 
     return updatedPlayerDictionary
@@ -485,332 +441,361 @@ def calculatePoints(playerDictionary):
 
 
 def orderData(data, eloDatabase):
-    A_team = []
-    B_team = []
+    playerDictionary = {}
 
-     # Populate A_team with ALLIES players and B_team with AXIS players
-    #find the players name in the databse
-    #of no player exists make a new entry with 1200 as the default Elo
-    #add spell checking in the future at this stage
-    defaultUserElo = 1200
-    defaultNumGames = 0
+    for team_name, team_info in data['teams'].items():
+        team_players = []
+        for player in team_info['players']:
+            player_name = player['name']
+            if player_name in eloDatabase['PlayerName'].values:
+                playerIndex = eloDatabase.index[eloDatabase['PlayerName'] == player_name][0]
+                starting_elo = eloDatabase.at[playerIndex, 'Starting Elo']
+                games_played = eloDatabase.at[playerIndex, 'games played']
+                team_players.append([
+                    player_name,
+                    starting_elo,
+                    games_played
+                ])
+            else:
+                team_players.append([player_name, 1200, 0])  # Default Elo and games played
 
-    for player in data['teams']['ALLIES']['players']:
-        if player['name'] in eloDatabase['PlayerName']:
-            playerIndex = eloDatabase['PlayerName'].index(player['name'])
-            A_team.append(list((player['name'], eloDatabase['Starting Elo'][playerIndex], eloDatabase['games played'][playerIndex])))
-        else:
-            A_team.append(list((player['name'], defaultUserElo,  defaultNumGames)))
-
-    for player in data['teams']['AXIS']['players']:
-        if player['name'] in eloDatabase['PlayerName']:
-            playerIndex = eloDatabase['PlayerName'].index(player['name'])
-            B_team.append(list((player['name'], eloDatabase['Starting Elo'][playerIndex], eloDatabase['games played'][playerIndex])))
-        else:
-            B_team.append(list((player['name'], defaultUserElo,  defaultNumGames)))
-
-        '''''
-        # Output the results
-        print("A Team (ALLIES):", A_team)
-        print("B Team (AXIS):", B_team)
-        '''''
-
-    playerDictionary = {'ATeam':{'players':[], 'Points':[], 'winProbability':[]},
-                            'BTeam':{'players':[], 'Points':[], 'winProbability':[]}
-                            }
-    
-    playerDictionary['ATeam']['players'] = A_team
-    playerDictionary['BTeam']['players'] = B_team
-    playerDictionary['ATeam']['Points'] = data['teams']['ALLIES']['victory_points']
-    playerDictionary['BTeam']['Points'] = data['teams']['AXIS']['victory_points']
+        playerDictionary[team_name] = {
+            'players': team_players,
+            'Points': data['teams'][team_name]['victory_points'],
+            'winProbability': None  # Will be calculated later
+        }
 
     return playerDictionary
 
 
 def prepareData(updatedDictionary, eloDatabase):
-    #find the name in the database and give it a new elo in a new elo column 
-    #add 1 to number of games played for the player 
-    players = updatedDictionary['ATeam']['players'] + updatedDictionary['BTeam']['players']
-     #after processing the data the elo database is updated
-    for player in players:
-        playerName = player[0]
-        if playerName in eloDatabase['PlayerName']:
-            playerIndex = eloDatabase['PlayerName'].index(playerName)
+    """
+    Updates the eloDatabase DataFrame with the new Elo ratings and game counts
+    from the updatedDictionary.
+    """
+    # After processing the data, the Elo database is updated
+    for team_name in updatedDictionary.keys():
+        players = updatedDictionary[team_name]['players']
+        for player in players:
+            playerName = player[0]
             newPlayerElo = player[4]
-            eloDatabase['Starting Elo'][playerIndex] = newPlayerElo
-            eloDatabase['games played'][playerIndex] +=  1
-        else:
-            print("player not in database")
+            gamesPlayed = player[2] + 1  # Increment games played
+
+            if playerName in eloDatabase['PlayerName'].values:
+                playerIndex = eloDatabase.index[eloDatabase['PlayerName'] == playerName][0]
+                eloDatabase.at[playerIndex, 'Starting Elo'] = newPlayerElo
+                eloDatabase.at[playerIndex, 'games played'] = gamesPlayed
+            else:
+                # Add new player to the database
+                new_player_data = pd.DataFrame({
+                    'PlayerName': [playerName],
+                    'Starting Elo': [newPlayerElo],
+                    'games played': [gamesPlayed]
+                })
+                eloDatabase = pd.concat([eloDatabase, new_player_data], ignore_index=True)
+                print(f"Added new player to database: {playerName}")
 
     return eloDatabase
 
+def print_game_results(game_result_dictionary):
+    """
+    Prints the game results in a formatted manner.
+    """
+    print("\n=== GAME RESULTS ===")
+    for team_name, team_info in game_result_dictionary['teams'].items():
+        print(f"\n{team_name} ({team_info['victory_points']} VP)")
+        print("-" * 40)
+        for player in team_info['players']:
+            print(f"{player['name']:<15} Score: {player['score']}")
+    print(f"\nWINNER: {game_result_dictionary['winner']}")
+    print("=" * 40 + "\n")
+    
+def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
+    """
+    Allows the user to implement corrections to the game dictionary.
+    Returns the possibly modified game_result_dictionary, user_corrections dictionary,
+    and updated skip_edit_prompt flag.
+    """
+    user_corrections = {
+        "edited": False,
+        "edits": []
+    }
 
-  
+    # Check if the user has chosen to skip the editing prompt
+    if skip_edit_prompt:
+        print("Skipping edit prompt as per user preference.")
+        return game_result_dictionary, user_corrections, skip_edit_prompt
 
-def main():
+    team_names = list(game_result_dictionary['teams'].keys())
 
-    #pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe' 
-    os.chdir('Desktop/robzScripts/RobzElo') 
-    image_path = 'test_images'
-=======
-    # Calculates the score gained or lost for each player
-    for player in playerInformation:
-        k = 50 / (1 + (player[1]/300))
-        if winner == 'B':
-            if player[2] == 'B':
-                newRating = player[0] + ((k*pointFactor) * (1 - RB))
-            elif player[2] == 'A':
-                newRating = player[0] + ((k*pointFactor) * (0 - RA))
+    while True:
+        edit = input("Would you like to edit these results? (y/n), or type 'never' to never be asked again: ").lower()
+        if edit == 'never':
+            # Update the skip_edit_prompt variable to skip prompt in the future
+            skip_edit_prompt = True
+            print("You will no longer be prompted to edit results during this session.")
+            break
+        elif edit != 'y':
+            break
+
+        user_corrections['edited'] = True
+
+        print("\nEditing options:")
+        print("1. Edit team victory points")
+        print("2. Edit player details")
+        print("3. Change winner")
+        print("4. Add or remove player")
+        print("5. Exit editing")
+
+        choice = input("Enter your choice (1-5): ")
+
+        if choice == '1':
+            for team_name in team_names:
+                old_vp = game_result_dictionary['teams'][team_name]['victory_points']
+                try:
+                    new_vp = int(input(f"Enter new victory points for {team_name} (current: {old_vp}): "))
+                    game_result_dictionary['teams'][team_name]['victory_points'] = new_vp
+                    user_corrections['edits'].append({
+                        "field": f"teams.{team_name}.victory_points",
+                        "old_value": old_vp,
+                        "new_value": new_vp
+                    })
+                except ValueError:
+                    print("Invalid input. Victory points must be a number.")
+
+        elif choice == '2':
+            team_name = input(f"Enter team to edit {team_names}: ").strip()
+            if team_name not in team_names:
+                print("Invalid team name.")
+                continue
+
+            print("\nCurrent players:")
+            for i, player in enumerate(game_result_dictionary['teams'][team_name]['players']):
+                print(f"{i+1}. {player['name']} - Score: {player['score']}")
+
+            try:
+                player_num = int(input("Enter player number to edit: ")) - 1
+                if 0 <= player_num < len(game_result_dictionary['teams'][team_name]['players']):
+                    player = game_result_dictionary['teams'][team_name]['players'][player_num]
+                    old_name = player['name']
+                    old_score = player['score']
+
+                    new_name = input("Enter new name (or press enter to keep current): ")
+                    new_score = input("Enter new score (or press enter to keep current): ")
+
+                    if new_name:
+                        player['name'] = new_name
+                        user_corrections['edits'].append({
+                            "field": f"teams.{team_name}.players[{player_num}].name",
+                            "old_value": old_name,
+                            "new_value": new_name
+                        })
+                    if new_score:
+                        try:
+                            player['score'] = int(new_score)
+                            user_corrections['edits'].append({
+                                "field": f"teams.{team_name}.players[{player_num}].score",
+                                "old_value": old_score,
+                                "new_value": int(new_score)
+                            })
+                        except ValueError:
+                            print("Invalid score. Must be a number.")
+                else:
+                    print("Invalid player number.")
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+
+        elif choice == '3':
+            old_winner = game_result_dictionary['winner']
+            new_winner = input(f"Enter new winner {team_names + ['TIE']}: ").strip()
+            if new_winner in team_names or new_winner.upper() == 'TIE':
+                game_result_dictionary['winner'] = new_winner
+                user_corrections['edits'].append({
+                    "field": "winner",
+                    "old_value": old_winner,
+                    "new_value": new_winner
+                })
             else:
-                print('Team is not A or B')
-        elif winner == 'A':
-            if player[2] == 'B':
-                newRating = player[0] + ((k*pointFactor) * (0 - RB))
-            elif player[2] == 'A':
-                newRating = player[0] + ((k*pointFactor) * (1 - RA))
+                print("Invalid team name.")
+
+        elif choice == '4':
+            team_name = input(f"Enter team to modify {team_names}: ").strip()
+            if team_name not in team_names:
+                print("Invalid team name.")
+                continue
+
+            action = input("Would you like to add or remove a player? (add/remove): ").lower()
+            if action == 'add':
+                new_name = input("Enter new player's name: ")
+                try:
+                    new_score = int(input("Enter new player's score: "))
+                except ValueError:
+                    print("Invalid score. Must be a number.")
+                    continue
+
+                game_result_dictionary['teams'][team_name]['players'].append({
+                    'name': new_name,
+                    'score': new_score
+                })
+                user_corrections['edits'].append({
+                    "field": f"teams.{team_name}.players",
+                    "action": "add",
+                    "player": {'name': new_name, 'score': new_score}
+                })
+
+            elif action == 'remove':
+                print("\nCurrent players:")
+                for i, player in enumerate(game_result_dictionary['teams'][team_name]['players']):
+                    print(f"{i+1}. {player['name']} - Score: {player['score']}")
+                try:
+                    player_num = int(input("Enter player number to remove: ")) - 1
+                    if 0 <= player_num < len(game_result_dictionary['teams'][team_name]['players']):
+                        removed_player = game_result_dictionary['teams'][team_name]['players'].pop(player_num)
+                        user_corrections['edits'].append({
+                            "field": f"teams.{team_name}.players",
+                            "action": "remove",
+                            "player": removed_player
+                        })
+                        print(f"Removed player: {removed_player['name']}")
+                    else:
+                        print("Invalid player number.")
+                except ValueError:
+                    print("Invalid input. Please enter a number.")
             else:
-                print('Team is not A or B')
+                print("Invalid action. Please choose 'add' or 'remove'.")
+
+        elif choice == '5':
+            break
         else:
-            print('No winner provided')
-        newPlayerElo.append(round(newRating))
-    return newPlayerElo, RB, RA, RP
+            print("Invalid choice.")
 
+        # Re-print game results after each edit
+        print_game_results(game_result_dictionary)
+
+    return game_result_dictionary, user_corrections, skip_edit_prompt
+  
+def process_and_save_game_data(game_result_dictionary, user_corrections, image_file):
+    """
+    Processes the game data and saves it into a JSON file.
+    """
+    # Prepare game entry data
+    current_time = datetime.now()
+    game_entry = {
+        "game_id": current_time.isoformat(timespec='milliseconds'),
+        "date": current_time.strftime('%Y-%m-%d'),
+        "time": current_time.strftime('%H:%M:%S.%f')[:-3],  # up to milliseconds
+        "image_file": os.path.basename(image_file),
+        "consensus_data": game_result_dictionary,
+        "user_corrections": user_corrections
+    }
+
+    # Load existing game data
+    if os.path.exists('game_results.json'):
+        try:
+            with open('game_results.json', 'r') as file:
+                game_results = json.load(file)
+        except json.JSONDecodeError:
+            print("Error: 'game_results.json' is corrupted. Overwriting file.")
+            game_results = []
+    else:
+        game_results = []
+
+    # Append new game entry
+    game_results.append(game_entry)
+
+    # Save updated game data
+    try:
+        with open('game_results.json', 'w') as file:
+            json.dump(game_results, file, indent=2)
+        print("Game results saved to 'game_results.json'.")
+    except IOError as e:
+        print(f"Failed to save game results: {e}")
+        
 def main():
-    image_path = 'test_images/test2.jpg'  # Update the image path as needed
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
+    image_path = 'test_images'
     if not os.path.exists(image_path):
-        print(f"Error: Image file '{image_path}' does not exist")
+        print(f"Error: Image path '{image_path}' does not exist")
         sys.exit(1)
     if len(API_KEYS['claude']) <= 10:
         print("Error: Invalid API key")
         sys.exit(1)
 
-<<<<<<< HEAD
-
-
-
-    # Check if images can be listed in the directory
     try:
         image_files = os.listdir(image_path)
     except PermissionError:
         print(f"Error: Permission denied for directory '{image_path}'")
         sys.exit(1)
-  
-  
-  
-    for image_file in image_files:
 
-        df = pd.read_csv("Elo Database.csv")
-        eloDatabase = df.to_dict('list')
+    # Filter image files
+    image_files = [f for f in image_files if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    total_files = len(image_files)
+    processed_files = 0  # Initialize counter
 
-        data = parse_game_score(os.path.join(image_path, image_file))
-        playerDictionary = orderData(data, eloDatabase)
-        updatedDictionary = calculatePoints(playerDictionary)
-        finalDictionary = prepareData(updatedDictionary, eloDatabase)
-        print(finalDictionary)
-        data_frame = pd.DataFrame(finalDictionary)
-        data_frame.to_csv('Elo Database.csv', index=False) 
-        print("database updated")
-       
-        """""
-        data = {'teams': {'ALLIES': {'victory_points': 169, 'players': [{'name': 'Starfy', 'score': 1435}, 
-                                                                         {'name': 'ShadowFalcon', 'score': 931}, 
-                                                                         {'name': 'MrCoffee', 'score': 36}, 
-                                                                         {'name': 'Bapouvre', 'score': 12}]}, 
-                                                                         'AXIS': {'victory_points': 167, 'players': [
-                                                                             {'name': 'The Grinch', 'score': 828}, 
-                                                                             {'name': 'Danielo1375', 'score': 220}, 
-                                                                             {'name': 'Nick', 'score': 164}, 
-                                                                             {'name': 'Mawcin_ka', 'score': 49}]}}, 'winner': 'ALLIES'}
-       """""
-    # This function parses the image and returns a dictionary with the game results
-    # Example output:
-    """ === GAME RESULTS ===
+    skip_edit_prompt = False  # Initialize skip_edit_prompt variable
 
-        ALLIES (169 VP)
-        ----------------------------------------
-        Starly          Score: 1435
-        ShadowFalcon    Score: 931
-        MrCoffee        Score: 36
-        Bapoivre        Score: 12
-
-        AXIS (167 VP)
-        ----------------------------------------
-        The Grinch      Score: 828
-        Danielo1375     Score: 220
-        Nick            Score: 164
-        Mawcin_ka       Score: 49
-
-        WINNER: ALLIES
-        ======================================== """
-    
-    #data = parse_game_score(image_path)
-
-    """""
-    print("\n=== GAME RESULTS ===")
-    print(f"\nALLIES ({game_result_dictionary['teams']['ALLIES']['victory_points']} VP)")
-    print("-" * 40)
-    for player in game_result_dictionary['teams']['ALLIES']['players']:
-        print(f"{player['name']:<15} Score: {player['score']}")
-        
-    print(f"\nAXIS ({game_result_dictionary['teams']['AXIS']['victory_points']} VP)")  
-    print("-" * 40)
-    for player in game_result_dictionary['teams']['AXIS']['players']:
-        print(f"{player['name']:<15} Score: {player['score']}")
-        
-    print(f"\nWINNER: {game_result_dictionary['winner']}")
-    print("=" * 40 + "\n")
-    """""
-   
-=======
-    # Parse the game score image
-    game_result_dictionary = parse_game_score(image_path)
-
-    if game_result_dictionary:
-        user_corrections = {
-            "edited": False,
-            "edits": []
-        }
-
-        while True:
-            print("\n=== GAME RESULTS ===")
-            for team_name in ['ALLIES', 'AXIS']:
-                team = game_result_dictionary['teams'][team_name]
-                print(f"\n{team_name} ({team['victory_points']} VP)")
-                print("-" * 40)
-                for player in team['players']:
-                    print(f"{player['name']:<15} Score: {player['score']}")
-
-            print(f"\nWINNER: {game_result_dictionary['winner']}")
-            print("=" * 40 + "\n")
-
-            edit = input("Would you like to edit these results? (y/n): ").lower()
-            if edit != 'y':
-                break
-
-            user_corrections['edited'] = True
-
-            print("\nEditing options:")
-            print("1. Edit team victory points")
-            print("2. Edit player details")
-            print("3. Change winner")
-
-            choice = input("Enter your choice (1-3): ")
-
-            if choice == '1':
-                for team_name in ['ALLIES', 'AXIS']:
-                    old_vp = game_result_dictionary['teams'][team_name]['victory_points']
-                    try:
-                        new_vp = int(input(f"Enter new victory points for {team_name}: "))
-                        game_result_dictionary['teams'][team_name]['victory_points'] = new_vp
-                        user_corrections['edits'].append({
-                            "field": f"teams.{team_name}.victory_points",
-                            "old_value": old_vp,
-                            "new_value": new_vp
-                        })
-                    except ValueError:
-                        print("Invalid input. Victory points must be a number.")
-
-            elif choice == '2':
-                team_name = input("Enter team to edit (ALLIES/AXIS): ").upper()
-                if team_name not in ['ALLIES', 'AXIS']:
-                    print("Invalid team name.")
-                    continue
-
-                print("\nCurrent players:")
-                for i, player in enumerate(game_result_dictionary['teams'][team_name]['players']):
-                    print(f"{i+1}. {player['name']} - Score: {player['score']}")
-
-                try:
-                    player_num = int(input("Enter player number to edit (1-4): ")) - 1
-                    if 0 <= player_num < len(game_result_dictionary['teams'][team_name]['players']):
-                        player = game_result_dictionary['teams'][team_name]['players'][player_num]
-                        old_name = player['name']
-                        old_score = player['score']
-
-                        new_name = input("Enter new name (or press enter to keep current): ")
-                        new_score = input("Enter new score (or press enter to keep current): ")
-
-                        if new_name:
-                            player['name'] = new_name
-                            user_corrections['edits'].append({
-                                "field": f"teams.{team_name}.players[{player_num}].name",
-                                "old_value": old_name,
-                                "new_value": new_name
-                            })
-                        if new_score:
-                            try:
-                                player['score'] = int(new_score)
-                                user_corrections['edits'].append({
-                                    "field": f"teams.{team_name}.players[{player_num}].score",
-                                    "old_value": old_score,
-                                    "new_value": int(new_score)
-                                })
-                            except ValueError:
-                                print("Invalid score. Must be a number.")
-                    else:
-                        print("Invalid player number.")
-                except ValueError:
-                    print("Invalid input. Please enter a number.")
-
-            elif choice == '3':
-                old_winner = game_result_dictionary['winner']
-                new_winner = input("Enter new winner (ALLIES/AXIS): ").upper()
-                if new_winner in ['ALLIES', 'AXIS']:
-                    game_result_dictionary['winner'] = new_winner
-                    user_corrections['edits'].append({
-                        "field": "winner",
-                        "old_value": old_winner,
-                        "new_value": new_winner
-                    })
-                else:
-                    print("Invalid team name.")
-
-            else:
-                print("Invalid choice.")
-
-        # Prepare game entry data
-        current_time = datetime.now()
-        game_entry = {
-            "game_id": current_time.isoformat(timespec='milliseconds'),
-            "date": current_time.strftime('%Y-%m-%d'),
-            "time": current_time.strftime('%H:%M:%S.%f')[:-3],  # up to milliseconds
-            "image_file": os.path.basename(image_path),
-            "consensus_data": game_result_dictionary,
-            "user_corrections": user_corrections
-        }
-
-        # Load existing game data
-        if os.path.exists('game_results.json'):
-            with open('game_results.json', 'r') as file:
-                game_results = json.load(file)
-        else:
-            game_results = []
-
-        # Append new game entry
-        game_results.append(game_entry)
-
-        # Save updated game data
-        with open('game_results.json', 'w') as file:
-            json.dump(game_results, file, indent=2)
-
-        print("Game results saved to 'game_results.json'.")
-
-        # Process results into CSV (existing code)
-        df = pd.read_csv("RobzElo.csv")
-        dictionary = df.to_dict('list')
-        newPlayerElo, RB, RA, RP = calculatePoints(dictionary)
-        dictionary['new Elo'] = newPlayerElo
-        dictionary['TeamBPoints'][1] = RB
-        dictionary['TeamAPoints'][1] = RA
-        dictionary['RP'] = RP
-        data_frame = pd.DataFrame(dictionary)
-        data_frame.to_csv('newElo.csv', index=False)
-
+    # Load the Elo database (assumed to be a CSV file)
+    if os.path.exists('elo_database.csv'):
+        try:
+            eloDatabase = pd.read_csv('elo_database.csv')
+        except Exception as e:
+            print(f"Error reading 'elo_database.csv': {e}")
+            # Initialize an empty DataFrame if error occurs
+            eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played'])
     else:
-        print("Failed to parse game results.")
-        return
->>>>>>> 2f247e12f875a5477f155f181a9863b91ced78b6
+        # Initialize an empty DataFrame if the file doesn't exist
+        eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played'])
+
+    for image_file in image_files:
+        try:
+            processed_files += 1  # Increment counter
+            full_image_path = os.path.join(image_path, image_file)
+            # Parse the game score image
+            game_result_dictionary = parse_game_score(full_image_path)
+            print(f"\nFinal consensus data stored in game_result_dictionary for image file '{image_file}':")
+            print(game_result_dictionary)
+
+            if game_result_dictionary:
+                # Print game results
+                print_game_results(game_result_dictionary)
+
+                # Implement user corrections, passing skip_edit_prompt
+                game_result_dictionary, user_corrections, skip_edit_prompt = implement_user_corrections(
+                    game_result_dictionary, skip_edit_prompt)
+
+                # Process and save game data
+                process_and_save_game_data(game_result_dictionary, user_corrections, image_file)
+
+                # Order and calculate points
+                playerDictionary = orderData(game_result_dictionary, eloDatabase)
+                updatedPlayerDictionary = calculatePoints(playerDictionary)
+
+                # Prepare and save updated Elo database
+                eloDatabase = prepareData(updatedPlayerDictionary, eloDatabase)
+            else:
+                print(f"Failed to parse game results for '{image_file}'.")
+                continue
+        except Exception as e:
+            print(f"An error occurred while processing '{image_file}': {e}")
+            continue  # Continue with the next file even if there's an error
+
+    # After all files have been processed, display final ELO scores
+    try:
+        # Save the updated Elo database
+        eloDatabase.to_csv('elo_database.csv', index=False)
+        print("\nElo database updated and saved.")
+
+        # Display final ELO scores per player
+        print("\n=== FINAL ELO SCORES ===")
+        print("-" * 50)
+        if len(eloDatabase) > 0:
+            eloDatabase_sorted = eloDatabase.sort_values(by='Starting Elo', ascending=False)
+            print(eloDatabase_sorted.to_string(index=False))
+        else:
+            print("No player data available.")
+        print("-" * 50 + "\n")
+    except Exception as e:
+        print(f"An error occurred while saving or displaying final ELO scores: {e}")
+
 
 if __name__ == "__main__":
     main()
