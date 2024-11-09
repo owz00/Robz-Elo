@@ -17,6 +17,8 @@ from datetime import datetime  # Added import
 
 # Configuration variable
 NUM_ATTEMPTS = 1  # Number of times to send the image to Claude for consensus
+IMAGE_FOLDER_PATH = "test_images"
+ELO_DATABASE_PATH = "elo_database.csv"
 
 def get_majority_value(values):
     """
@@ -844,7 +846,7 @@ def process_and_save_game_data(game_result_dictionary, user_corrections, image_f
         print(f"Failed to save game results: {e}")
         
 def main():
-    image_path = 'test_images'
+    image_path = IMAGE_FOLDER_PATH
     if not os.path.exists(image_path):
         print(f"Error: Image path '{image_path}' does not exist")
         sys.exit(1)
@@ -866,11 +868,11 @@ def main():
     skip_edit_prompt = False  # Initialize skip_edit_prompt variable
 
     # Load the Elo database (assumed to be a CSV file)
-    if os.path.exists('elo_database.csv'):
+    if os.path.exists(ELO_DATABASE_PATH):
         try:
-            eloDatabase = pd.read_csv('elo_database.csv')
+            eloDatabase = pd.read_csv(ELO_DATABASE_PATH)
         except Exception as e:
-            print(f"Error reading 'elo_database.csv': {e}")
+            print(f"Error reading '{ELO_DATABASE_PATH}': {e}")
             # Initialize an empty DataFrame if error occurs
             eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played'])
     else:
@@ -913,7 +915,7 @@ def main():
     # After all files have been processed, display final ELO scores
     try:
         # Save the updated Elo database
-        eloDatabase.to_csv('elo_database.csv', index=False)
+        eloDatabase.to_csv(ELO_DATABASE_PATH, index=False)
         print("\nElo database updated and saved.")
 
         # Display final ELO scores per player
