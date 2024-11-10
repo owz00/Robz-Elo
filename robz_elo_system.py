@@ -64,9 +64,19 @@ def main():
     if not os.path.exists(image_path):
         print(f"Error: Image path '{image_path}' does not exist")
         sys.exit(1)
-    if len(API_KEYS['claude']) <= 10:
-        print("Error: Invalid API key")
+    # Validate API key
+    api_key = API_KEYS['claude']
+    if api_key == 'your-api-key-here':
+        print("Error: API key not configured. Please set your Claude API key in the environment variables.")
+        print("See configs/llm_config.py for instructions on how to set up your API key.")
         sys.exit(1)
+    elif len(api_key) < 10:  # Claude API keys are typically longer than 10 chars
+        print("Error: Invalid API key format. Claude API keys should be longer than 10 characters.")
+        print("Current key:", api_key[:8] + "..." if len(api_key) > 8 else api_key)
+        print("Please check your API key configuration in the environment variables.")
+        sys.exit(1)
+    else:
+        print("API key validation successful")
 
     try:
         image_files = os.listdir(image_path)

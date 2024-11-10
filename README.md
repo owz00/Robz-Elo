@@ -31,7 +31,7 @@ An Elo rating system to track player ratings based on game results. This project
 
 3. **Set Up API Keys**
 
-   Create a `configs` directory and add a `llm_config.py` file with your Anthropic API key:
+   Set the Anthropic API key in the `llm_config.py` file:
 
    ```python
    # configs/llm_config.py
