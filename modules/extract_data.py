@@ -3,8 +3,8 @@ import base64
 import json
 from PIL import Image 
 from anthropic import Anthropic
-from llm_config import API_KEYS
-from Elo_calculation import calculatePoints
+from configs.llm_config import API_KEYS
+from modules.elo_calculation import calculatePoints
 from io import BytesIO
 from collections import Counter
 from difflib import SequenceMatcher  # For fuzzy string matching

@@ -3,16 +3,16 @@ import pandas as pd
 import os
 import sys
 
-from llm_config import API_KEYS
-from Elo_calculation import calculatePoints
-from extract_data import parse_game_score, implement_user_corrections, order_data
-from save_data import process_and_save_game_data, prepareData
+from configs.llm_config import API_KEYS
+from modules.elo_calculation import calculatePoints
+from modules.extract_data import parse_game_score, implement_user_corrections, order_data
+from modules.save_data import process_and_save_game_data, prepareData
 
-from utils import print_game_results
+from modules.utils import print_game_results
 
 # Configuration variable
 NUM_ATTEMPTS = 1  # Number of times to send the image to Claude for consensus
-IMAGE_FOLDER_PATH = "test_images"
+IMAGE_FOLDER_PATH = "test_image_sets/set_1"
 ELO_DATABASE_PATH = "elo_database.csv"
 
   

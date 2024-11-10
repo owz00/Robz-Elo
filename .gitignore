@@ -6,6 +6,5 @@ newElo.csv
 /config.py
 __pycache__
 game_results.json
-test_images
-llm_config.py
+configs/llm_config.py
 elo_database.csv
