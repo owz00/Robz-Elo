@@ -1,10 +1,11 @@
 # General
 /.vscode
+__pycache__
 
 # Elo System
-newElo.csv
-/config.py
-__pycache__
-game_results.json
+*.csv
+*.json
+
+# LLM Config
 configs/llm_config.py
-elo_database.csv
+

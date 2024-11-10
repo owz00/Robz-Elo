@@ -1,15 +1,16 @@
 import math 
 import base64
 import json
+
 from PIL import Image 
 from anthropic import Anthropic
-from configs.llm_config import API_KEYS
-from modules.elo_calculation import calculatePoints
 from io import BytesIO
 from collections import Counter
-from difflib import SequenceMatcher  # For fuzzy string matching
-from robz_elo_system import print_game_results
-from robz_elo_system import NUM_ATTEMPTS
+from difflib import SequenceMatcher  
+
+from configs.llm_config import API_KEYS
+from modules.elo_calculation import calculatePoints
+from modules.utils import print_game_results
 
 def order_data(data, eloDatabase):
     playerDictionary = {}
@@ -243,7 +244,7 @@ def compute_consensus(parsed_data_list):
 
     return consensus_data
 
-def parse_game_score(image_path, num_attempts=NUM_ATTEMPTS):
+def parse_game_score(image_path, num_attempts=1):
     """
     Parses a game score image using the Claude API and returns structured data.
 
