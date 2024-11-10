@@ -19,8 +19,8 @@ An Elo rating system to track player ratings based on game results. This project
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/your_username/robz-elo.git
-   cd robz-elo
+   git clone https://github.com/owz00/Robz-Elo.git
+   cd Robz-Elo
    ```
 
 2. **Install Dependencies**
@@ -48,3 +48,7 @@ An Elo rating system to track player ratings based on game results. This project
 ## Usage
 
 Run the main script to process game scores and update player ratings:
+
+```bash
+python robz_elo_system.py
+```

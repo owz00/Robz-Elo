@@ -6,6 +6,5 @@ __pycache__
 *.csv
 *.json
 
-# LLM Config
-configs/llm_config.py
+
 
