@@ -4,7 +4,7 @@ import os
 import json
 from datetime import datetime  # Added import
 
-
+#get the elo history, append anew value to array
 def prepareData(updatedDictionary, eloDatabase):
     """
     Updates the eloDatabase DataFrame with the new Elo ratings and game counts
@@ -12,32 +12,60 @@ def prepareData(updatedDictionary, eloDatabase):
     """
     # After processing the data, the Elo database is updated
     for team_name in updatedDictionary.keys():
+        
         players = updatedDictionary[team_name]['players']
         for player in players:
             playerName = player[0]
             newPlayerElo = player[4]
-            gamesPlayed = player[2] + 1  # Increment games played
+            gamesPlayed = player[2] + 1  # Increment games played 
 
             if playerName in eloDatabase['PlayerName'].values:
                 playerIndex = eloDatabase.index[eloDatabase['PlayerName'] == playerName][0]
                 eloDatabase.at[playerIndex, 'Starting Elo'] = newPlayerElo
                 eloDatabase.at[playerIndex, 'games played'] = gamesPlayed
+
+                 # Append new Elo to Elo History
+                eloDatabase.at[playerIndex, 'Elo History'].append(newPlayerElo)
+            
             else:
                 # Add new player to the database
                 new_player_data = pd.DataFrame({
                     'PlayerName': [playerName],
                     'Starting Elo': [newPlayerElo],
-                    'games played': [gamesPlayed]
+                    'games played': [gamesPlayed],
+                    'past names': 'null',
+                    'Elo History': [[newPlayerElo]]  # Initialize Elo History with the first Elo
+                    
                 })
+
                 eloDatabase = pd.concat([eloDatabase, new_player_data], ignore_index=True)
                 print(f"Added new player to database: {playerName}")
 
+    """
+    save to json
+    """
+    players_list = eloDatabase.to_dict(orient='records')
+    final_structure = {"Players": players_list}
+    with open("players_data.json", "w") as file:
+        json.dump(final_structure, file, indent=4)
+
     return eloDatabase
+
+
+
+
+
+
+
 
 def process_and_save_game_data(game_result_dictionary, user_corrections, image_file):
     """
     Processes the game data and saves it into a JSON file.
     """
+
+    """""
+    Save Games here
+    """""
     # Prepare game entry data
     current_time = datetime.now()
     game_entry = {
@@ -70,3 +98,6 @@ def process_and_save_game_data(game_result_dictionary, user_corrections, image_f
         print("Game results saved to 'game_results.json'.")
     except IOError as e:
         print(f"Failed to save game results: {e}")
+
+
+

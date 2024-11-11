@@ -98,10 +98,10 @@ def main():
         except Exception as e:
             print(f"Error reading '{ELO_DATABASE_PATH}': {e}")
             # Initialize an empty DataFrame if error occurs
-            eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played'])
+            eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played', 'Elo History'])
     else:
         # Initialize an empty DataFrame if the file doesn't exist
-        eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played'])
+        eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played', 'Elo History'])
 
     for image_file in image_files:
         try:
