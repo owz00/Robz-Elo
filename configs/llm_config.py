@@ -16,5 +16,5 @@ import os
 #   source /etc/environment
 #
 API_KEYS = {
-    'claude': os.getenv('CLAUDE_API_KEY', 'your-api-key-here')  # Replace 'your-api-key-here' if not using env var
+    'claude': os.getenv('CLAUDE_API_KEY', 'key-here')  # Replace 'your-api-key-here' if not using env var
 }

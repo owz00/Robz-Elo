@@ -58,7 +58,7 @@ from modules.utils import print_game_results
 NUM_ATTEMPTS = 1  # Number of times to send the image to Claude for consensus (increase this value to improve the accuracy of the game result data)
 IMAGE_FOLDER_PATH = "test_image_sets/set_1" # Path to the folder containing the images (must contain only image files)
 ELO_DATABASE_PATH = "elo_database.csv" # Path to the Elo database (will be created if it doesn't exist)
-
+ELO_JSON_DATABASE_PATH = "players_data.json"
   
 def main():
     image_path = IMAGE_FOLDER_PATH 
@@ -92,6 +92,8 @@ def main():
 
     skip_edit_prompt = False  # Initialize skip_edit_prompt variable (used to skip the edit prompt if the game result is already correct)
 
+
+    
     # Load the Elo database (assumed to be a CSV file)
     if os.path.exists(ELO_DATABASE_PATH):
         try:
@@ -103,6 +105,25 @@ def main():
     else:
         # Initialize an empty DataFrame if the file doesn't exist
         eloDatabase = pd.DataFrame(columns=['PlayerName', 'Starting Elo', 'games played', 'Elo History'])
+    
+
+    if os.path.exists(ELO_JSON_DATABASE_PATH):
+        try:
+            with open(ELO_JSON_DATABASE_PATH, "r") as file:
+                eloDatabaseJson = json.load(file)
+        except Exception as e:
+            print(f"Error reading '{ELO_JSON_DATABASE_PATH}': {e}")
+            # Initialize an empty JSON structure if there's an error
+            eloDatabaseJson = {"Players": []}
+    else:
+        # Initialize an empty JSON structure if the file doesn't exist
+        eloDatabaseJson = {"Players": []}
+
+    # If you want to ensure the file is created if it doesn't exist:
+    if not os.path.exists(ELO_JSON_DATABASE_PATH):
+        with open(ELO_JSON_DATABASE_PATH, "w") as file:
+            json.dump(eloDatabaseJson, file, indent=4)
+
 
     for image_file in image_files:
         try:
@@ -125,11 +146,11 @@ def main():
                 process_and_save_game_data(game_result_dictionary, user_corrections, image_file)
 
                 # Order and calculate points (orders the game result data and calculates the points for each player)
-                playerDictionary = order_data(game_result_dictionary, eloDatabase)
+                playerDictionary = order_data(game_result_dictionary, eloDatabaseJson)
                 updatedPlayerDictionary = calculatePoints(playerDictionary)
 
                 # Prepare and save updated Elo database (saves the updated Elo database to a CSV file)
-                eloDatabase = prepareData(updatedPlayerDictionary, eloDatabase)
+                eloDatabaseJson = prepareData(updatedPlayerDictionary, eloDatabaseJson)
             else:
                 print(f"Failed to parse game results for '{image_file}'.")
                 continue
@@ -140,15 +161,17 @@ def main():
     # After all files have been processed, display final ELO scores
     try:
         # Save the updated Elo database
-        eloDatabase.to_csv(ELO_DATABASE_PATH, index=False)
+        #eloDatabaseJson.to_csv(ELO_DATABASE_PATH, index=False)
         print("\nElo database updated and saved.")
 
         # Display final ELO scores per player
         print("\n=== FINAL ELO SCORES ===")
         print("-" * 50)
-        if len(eloDatabase) > 0:
-            eloDatabase_sorted = eloDatabase.sort_values(by='Starting Elo', ascending=False)
-            print(eloDatabase_sorted.to_string(index=False))
+        if eloDatabaseJson:
+            # Loop through the list of players and print their name and starting Elo
+            for player in eloDatabaseJson['Players']:
+                print(f"Player: {player['PlayerName']}, Starting Elo: {player['Starting Elo']}")
+          
         else:
             print("No player data available.")
         print("-" * 50 + "\n")

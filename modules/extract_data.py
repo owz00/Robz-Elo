@@ -14,7 +14,7 @@ import os
 from configs.llm_config import API_KEYS
 from modules.elo_calculation import calculatePoints
 from modules.utils import print_game_results
-
+"""
 def order_data(data, eloDatabase):
     playerDictionary = {}
 
@@ -41,6 +41,47 @@ def order_data(data, eloDatabase):
         }
 
     return playerDictionary
+"""
+
+def order_data(data, eloDatabase):
+    playerDictionary = {}
+
+    # Loop over each team in the input data
+    for team_name, team_info in data['teams'].items():
+        team_players = []
+
+        # Loop over each player in the team
+        for player in team_info['players']:
+            player_name = player['name']
+
+            # Find the player's data in the JSON structure under "Players"
+            player_data = next((p for p in eloDatabase["Players"] if p["PlayerName"] == player_name), None)
+            
+            # Use data from JSON or default values if player not found
+            if player_data:
+                starting_elo = player_data.get("Starting Elo", 1200)  # Default to 1200 if missing
+                games_played = player_data.get("games played", 0)     # Default to 0 if missing
+            else:
+                starting_elo = 1200
+                games_played = 0
+
+            # Append player's data to the team_players list
+            team_players.append([
+                player_name,
+                starting_elo,
+                games_played
+            ])
+
+        # Add the team and its players to the playerDictionary
+        playerDictionary[team_name] = {
+            'players': team_players,
+            'Points': team_info['victory_points'],
+            'winProbability': None  # This will be calculated later
+        }
+
+    return playerDictionary
+
+
 
 def get_majority_value(values):
     """

@@ -4,10 +4,12 @@ import os
 import json
 from datetime import datetime  # Added import
 
-#get the elo history, append anew value to array
+
+
+
 def prepareData(updatedDictionary, eloDatabase):
     """
-    Updates the eloDatabase DataFrame with the new Elo ratings and game counts
+    Updates the eloDatabase dictionary with the new Elo ratings and game counts
     from the updatedDictionary.
     """
     # After processing the data, the Elo database is updated
@@ -19,38 +21,46 @@ def prepareData(updatedDictionary, eloDatabase):
             newPlayerElo = player[4]
             gamesPlayed = player[2] + 1  # Increment games played 
 
-            if playerName in eloDatabase['PlayerName'].values:
-                playerIndex = eloDatabase.index[eloDatabase['PlayerName'] == playerName][0]
-                eloDatabase.at[playerIndex, 'Starting Elo'] = newPlayerElo
-                eloDatabase.at[playerIndex, 'games played'] = gamesPlayed
+            if eloDatabase != []:
+                # Check if the player exists in the eloDatabase
+                player_data = next((p for p in eloDatabase["Players"] if p["PlayerName"] == playerName), None)
 
-                 # Append new Elo to Elo History
-                eloDatabase.at[playerIndex, 'Elo History'].append(newPlayerElo)
+                if player_data:
+                    # Update Elo and games played for existing player
+                    player_data['Starting Elo'] = newPlayerElo
+                    player_data['games played'] = gamesPlayed
+
+                    # Append new Elo to Elo History
+                    player_data['Elo History'].append(newPlayerElo)
             
+                else:
+                    # Add new player to the database
+                    new_player_data = {
+                        'PlayerName': playerName,
+                        'Starting Elo': newPlayerElo,
+                        'games played': gamesPlayed,
+                        'past names': "null",  # Or handle if you need specific logic for past names
+                        'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
+                    }
+                    eloDatabase["Players"].append(new_player_data)
+                    print(f"Added new player to database: {playerName}")
             else:
-                # Add new player to the database
-                new_player_data = pd.DataFrame({
-                    'PlayerName': [playerName],
-                    'Starting Elo': [newPlayerElo],
-                    'games played': [gamesPlayed],
-                    'past names': 'null',
-                    'Elo History': [[newPlayerElo]]  # Initialize Elo History with the first Elo
-                    
-                })
+                new_player_data = {
+                    'PlayerName': playerName,
+                    'Starting Elo': newPlayerElo,
+                    'games played': gamesPlayed,
+                    'past names': "null",  # Or handle if you need specific logic for past names
+                    'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
+                    }
+                eloDatabase["Players"].append(new_player_data)
+                print(f"Added new player to databaseee: {playerName}")
 
-                eloDatabase = pd.concat([eloDatabase, new_player_data], ignore_index=True)
-                print(f"Added new player to database: {playerName}")
 
-    """
-    save to json
-    """
-    players_list = eloDatabase.to_dict(orient='records')
-    final_structure = {"Players": players_list}
+    # Save updated database to JSON file
     with open("players_data.json", "w") as file:
-        json.dump(final_structure, file, indent=4)
+        json.dump(eloDatabase, file, indent=4)
 
     return eloDatabase
-
 
 
 
