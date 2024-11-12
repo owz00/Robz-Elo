@@ -46,6 +46,7 @@ Configuration Variables:
 import pandas as pd
 import os
 import sys
+import json
 
 from configs.llm_config import API_KEYS
 from modules.elo_calculation import calculatePoints
@@ -110,11 +111,11 @@ def main():
             # Parse the game score image (extracts the game result data from the image)
             game_result_dictionary = parse_game_score(full_image_path, num_attempts=NUM_ATTEMPTS)
             print(f"\nFinal consensus data stored in game_result_dictionary for image file '{image_file}':")
-            print(game_result_dictionary)
+            print(json.dumps(game_result_dictionary, indent=4))
 
             if game_result_dictionary:
                 # Print game results (prints the game result data to the console)
-                print_game_results(game_result_dictionary)
+                print_game_results(game_result_dictionary, full_image_path)
 
                 # Implement user corrections, passing skip_edit_prompt (allows the user to correct the game result data if it is incorrect)
                 game_result_dictionary, user_corrections, skip_edit_prompt = implement_user_corrections(

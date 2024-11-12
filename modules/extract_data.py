@@ -1,12 +1,15 @@
 import math 
 import base64
 import json
+import cv2
+import numpy as np
 
 from PIL import Image 
 from anthropic import Anthropic
 from io import BytesIO
 from collections import Counter
 from difflib import SequenceMatcher  
+import os
 
 from configs.llm_config import API_KEYS
 from modules.elo_calculation import calculatePoints
@@ -84,30 +87,24 @@ def similar(a, b):
 def group_similar_names(names, threshold=0.8):
     """
     Groups similar names together based on a similarity threshold.
-
-    Names that are similar (similarity ratio above the threshold) are placed in the same group.
-
-    **Parameters:**
-    - `names` (list of str): A list of names to group.
-    - `threshold` (float): The similarity threshold between 0 and 1. Default is 0.8.
-
-    **Returns:**
-    - A list of groups, where each group is a list of similar names.
-
-    **Example:**
-
-    ```python
-    names = ["John", "Jon", "Johnny", "Jane", "Janet"]
-    groups = group_similar_names(names)
-    print(groups)
-    # Output: [['John', 'Jon', 'Johnny'], ['Jane', 'Janet']]
-    ```
     """
     groups = []
+    generic_team_names = {'TEAM A', 'TEAM B', 'ALLIES', 'AXIS'}  # Keep these names separate
+
     for name in names:
+        name_upper = name.upper()
+        # Check if name matches exactly any generic team name
+        if name_upper in generic_team_names:
+            groups.append([name])  # Treat as their own group
+            continue
+
         found_group = False
         for group in groups:
-            if any(similar(name, member) >= threshold for member in group):
+            group_name_upper = group[0].upper()
+            # Skip comparison with generic team names
+            if group_name_upper in generic_team_names:
+                continue
+            if any(similar(name_upper, member.upper()) >= threshold for member in group):
                 group.append(name)
                 found_group = True
                 break
@@ -117,93 +114,67 @@ def group_similar_names(names, threshold=0.8):
 
 def compute_consensus(parsed_data_list):
     """
-    Combines multiple parsed data dictionaries into a single consensus dictionary.
-
-    This function goes through each piece of data (like the winner, team names, player names, and scores)
-    and selects the most frequently occurring value among all the parsed data.
-
-    **Parameters:**
-    - `parsed_data_list` (list of dict): A list of dictionaries containing parsed game data.
-
-    **Returns:**
-    - A single dictionary representing the consensus of the input data.
-
-    **How It Works:**
-    - Collects all team names and uses them to organize the consensus.
-    - For each team, it computes the consensus victory points and player information.
-    - Uses `get_majority_value` to find the most common value.
-    - Uses `group_similar_names` to group and consensus player names.
-
-    **Example:**
-
-    ```python
-    parsed_data_list = [
-        {
-            'winner': 'Team A',
-            'teams': {
-                'Team A': {
-                    'victory_points': 10,
-                    'players': [{'name': 'Alice', 'score': 100}]
-                },
-                'Team B': {
-                    'victory_points': 8,
-                    'players': [{'name': 'Bob', 'score': 90}]
-                }
-            }
-        },
-        {
-            'winner': 'Team A',
-            'teams': {
-                'Team A': {
-                    'victory_points': 10,
-                    'players': [{'name': 'Alicia', 'score': 100}]
-                },
-                'Team B': {
-                    'victory_points': 8,
-                    'players': [{'name': 'Robert', 'score': 90}]
-                }
-            }
-        },
-    ]
-
-    consensus = compute_consensus(parsed_data_list)
-    print(consensus)
-    # Output:
-    # {
-    #   'winner': 'Team A',
-    #   'teams': {
-    #     'Team A': {
-    #       'victory_points': 10,
-    #       'players': [{'name': 'Alice', 'score': 100}]
-    #     },
-    #     'Team B': {
-    #       'victory_points': 8,
-    #       'players': [{'name': 'Bob', 'score': 90}]
-    #     }
-    #   }
-    # }
-    ```
+    Combines multiple parsed data dictionaries into a single consensus dictionary,
+    handling similar team names.
     """
     consensus_data = {}
 
     # Collect all team names from parsed data
-    team_names = set()
+    all_team_names = []
     for pd in parsed_data_list:
         if 'teams' in pd:
-            team_names.update(pd['teams'].keys())
+            all_team_names.extend(pd['teams'].keys())
+
+    # Group similar team names
+    grouped_team_names = group_similar_names(all_team_names, threshold=0.8)
+
+    # Create a mapping from original team names to consensus names
+    consensus_team_names = {}
+    for group in grouped_team_names:
+        # Choose the most common team name in the group as the consensus name
+        consensus_name = get_majority_value(group)
+        for name in group:
+            consensus_team_names[name] = consensus_name
+
+    # Update parsed data with consensus team names
+    updated_parsed_data_list = []
+    for pd in parsed_data_list:
+        updated_pd = pd.copy()
+        if 'teams' in pd:
+            updated_teams = {}
+            for team_name, team_data in pd['teams'].items():
+                consensus_name = consensus_team_names.get(team_name, team_name)
+                updated_teams[consensus_name] = team_data
+            updated_pd['teams'] = updated_teams
+        updated_parsed_data_list.append(updated_pd)
 
     # Consensus for 'winner'
-    winner_values = [pd.get('winner') for pd in parsed_data_list if pd.get('winner') is not None]
+    winner_values = [
+        consensus_team_names.get(pd.get('winner'), pd.get('winner'))
+        for pd in parsed_data_list if pd.get('winner') is not None
+    ]
     consensus_data['winner'] = get_majority_value(winner_values)
 
     consensus_data['teams'] = {}
 
+    # Collect unique consensus team names while preserving order
+    seen_team_names = set()
+    team_names = []
+    for pd in updated_parsed_data_list:
+        for team_name in pd.get('teams', {}).keys():
+            if team_name not in seen_team_names:
+                seen_team_names.add(team_name)
+                team_names.append(team_name)
+
     for team_name in team_names:
         # Collect all team data for this team
         team_data_list = [
-            pd['teams'][team_name] for pd in parsed_data_list
+            pd['teams'][team_name] for pd in updated_parsed_data_list
             if 'teams' in pd and team_name in pd['teams']
         ]
+
+        if not team_data_list:
+            continue  # Skip if no data for this team
 
         # Consensus for 'victory_points'
         victory_points_values = [
@@ -211,8 +182,6 @@ def compute_consensus(parsed_data_list):
             if team_data.get('victory_points') is not None
         ]
         consensus_victory_points = get_majority_value(victory_points_values)
-
-        consensus_data['teams'][team_name] = {'victory_points': consensus_victory_points}
 
         # Consensus for 'players'
         max_players = max(len(team_data.get('players', [])) for team_data in team_data_list)
@@ -240,51 +209,118 @@ def compute_consensus(parsed_data_list):
             consensus_score = get_majority_value(scores_at_position) if scores_at_position else None
             consensus_players.append({'name': consensus_name, 'score': consensus_score})
 
-        consensus_data['teams'][team_name]['players'] = consensus_players
+        consensus_data['teams'][team_name] = {
+            'victory_points': consensus_victory_points,
+            'players': consensus_players
+        }
 
     return consensus_data
+
+def detect_scoreboard(image_path, save_cropped=True, cropped_folder="cropped_scoreboards"):
+    """
+    Detects, crops, and upscales the scoreboard from a game screenshot.
+
+    This function processes an image to identify and extract the scoreboard area, 
+    enhances its sharpness, and optionally saves the cropped image.
+
+    **Parameters:**
+    - `image_path` (str): The file path to the game screenshot.
+    - `save_cropped` (bool): Whether to save the cropped scoreboard image.
+    - `cropped_folder` (str): Directory to save the cropped images.
+
+    **Returns:**
+    - A PIL Image object of the upscaled and sharpened scoreboard.
+    """
+    # Read image using OpenCV
+    img = cv2.imread(image_path)
+    original_height, original_width = img.shape[:2]
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # Apply threshold to get black and white image
+    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY)
+    
+    # Find contours
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Find the largest rectangular contour (likely to be the scoreboard)
+    max_area = 0
+    scoreboard_rect = None
+    
+    for cnt in contours:
+        x, y, w, h = cv2.boundingRect(cnt)
+        area = w * h
+        aspect_ratio = float(w)/h
+        
+        # Filter based on area and aspect ratio
+        if area > max_area and 1.2 < aspect_ratio < 2.5 and area > (original_height * original_width * 0.1):
+            max_area = area
+            scoreboard_rect = (x, y, w, h)
+    
+    if scoreboard_rect is None:
+        print("Could not detect scoreboard, using original image")
+        cropped = img
+    else:
+        # Crop the scoreboard without padding
+        x, y, w, h = scoreboard_rect
+        cropped = img[y:y+h, x:x+w]
+    
+    # Upscale the image using high-quality interpolation
+    upscale_factor = 2  # Adjust this factor to control the upscaling
+    new_width = cropped.shape[1] * upscale_factor
+    new_height = cropped.shape[0] * upscale_factor
+    upscaled = cv2.resize(cropped, (new_width, new_height), interpolation=cv2.INTER_LANCZOS4)
+    
+    # Apply a sharpening filter
+    sharpening_kernel = np.array([[0, -1, 0],
+                                  [-1, 5,-1],
+                                  [0, -1, 0]])
+    sharpened = cv2.filter2D(upscaled, -1, sharpening_kernel)
+    
+    # Convert back to PIL Image
+    pil_image = Image.fromarray(cv2.cvtColor(sharpened, cv2.COLOR_BGR2RGB))
+    
+    # Save cropped image if requested
+    if save_cropped:
+        if not os.path.exists(cropped_folder):
+            os.makedirs(cropped_folder)
+        base_name = os.path.splitext(os.path.basename(image_path))[0]
+        save_path = os.path.join(cropped_folder, f"{base_name}_upscaled.png")
+        pil_image.save(save_path, format='PNG')
+    
+    return pil_image
+
+
 
 def parse_game_score(image_path, num_attempts=1):
     """
     Parses a game score image using the Claude API and returns structured data.
 
-    This function reads an image of a game score sheet, processes it, and sends it to the Claude API for parsing.
+    This function reads an image of a game score sheet, crops the scoreboard area, and sends it to the Claude API for parsing.
     It attempts to extract team names, player names, scores, and victory points.
 
     **Parameters:**
     - `image_path` (str): The file path to the game score image.
-    - `num_attempts` (int): Number of times to send the image to Claude for consensus (default is `NUM_ATTEMPTS`).
+    - `num_attempts` (int): Number of times to send the image to Claude for consensus.
 
     **Returns:**
-    - A dictionary containing the consensus data extracted from the image. Includes team information and winner.
+    - A dictionary containing the consensus data extracted from the image, including team information and winner.
 
     **How It Works:**
-    - Determines the media type based on the image file extension.
-    - Reads and processes the image (resizing or cropping) to meet size constraints.
-    - Encodes the image in base64 format.
-    - Sends the image and a prompt to the Claude API.
-    - Parses the JSON response and collects data from multiple attempts.
+    - Detects and crops the scoreboard from the image.
+    - Encodes the cropped image in base64 format.
+    - Sends the image and a prompt to the Claude API for parsing.
+    - Collects the parsed data from multiple attempts.
     - Computes consensus data using `compute_consensus`.
-
-    **Example:**
-
-    ```python
-    result = parse_game_score('game_scores/score_sheet.jpg')
-    if result:
-        print("Parsed Data:")
-        print(result)
-    else:
-        print("Failed to parse the game score.")
-    ```
+    - Includes all attempt data in the final consensus data for analysis.
     """
-    # Determine media type based on file extension
-    media_type = "image/jpeg"  # default
-    if image_path.lower().endswith(".png"):
-        media_type = "image/png"
-    elif image_path.lower().endswith(".webp"):
-        media_type = "image/webp"
-    elif image_path.lower().endswith(".gif"):
-        media_type = "image/gif"
+    # Detect and crop the scoreboard from the image
+    cropped_image = detect_scoreboard(image_path)
+    if cropped_image is None:
+        print("Error: Unable to process image for scoreboard detection.")
+        return None
+
+    # Determine media type based on the image format (we'll use PNG for the cropped image)
+    media_type = "image/png"
 
     client = Anthropic(api_key=API_KEYS['claude'])
 
@@ -299,11 +335,16 @@ def parse_game_score(image_path, num_attempts=1):
        (e.g., one letter off). Correct or account for such minor discrepancies.
 
     2. **Team Names**: The team names can be any of the following factions, generic names like "Team A" or "Team B", or any combination thereof.
+       There must be exactly 2 teams per game.
 
        **Factions List**:
-       - U.S. Army
-       - Wehrmacht  
-       - Red Army
+       - Team A
+       - Team B
+       - ALLIES
+       - AXIS
+       - USA
+       - Wehrmacht
+       - Soviet army
        - Commonwealth
        - Imperial Japan
        - Kampfgruppe Ost
@@ -311,12 +352,12 @@ def parse_game_score(image_path, num_attempts=1):
        - Guards Army
 
     3. **Data to Extract**:
-       - For **each team**:
+       - For **each of the 2 teams**:
          - The **team's name**
          - **List of player names** under the 'Player' column (excluding entries that match the team name)
          - Team's total **victory points** from the 'Victory P.' column
          - Each player's individual **score** from the 'Score' column
-         - Note: Team total scores should not be included as player scores or tracked as a player
+         - IMPORTANT: Team total scores should NOT be included as player scores. The team total score appears at the top of each team's section and should be ignored when extracting player scores.
 
     4. **Organize the data into the following JSON structure**:
 
@@ -333,7 +374,7 @@ def parse_game_score(image_path, num_attempts=1):
           ]
         },
         "<team_name_2>": {
-          "victory_points": <integer>, 
+          "victory_points": <integer>,
           "players": [
             {
               "name": "<player_name>",
@@ -350,11 +391,14 @@ def parse_game_score(image_path, num_attempts=1):
 
     6. If any data is missing or cannot be read, indicate it with a null value in the JSON.
 
-    **Instructions:**
+    **Critical Instructions:**
     - Provide only the JSON output and no additional text
     - Think step by step, analyze every part of the image carefully before providing the final JSON output
-    - Do not include team total scores as individual player scores
+    - Do not include team total scores as individual player scores - these appear at the top of each team's section
     - Do not include entries where player name matches team name
+    - Do not include any additional keys or metadata beyond the specified JSON structure
+    - Double check that player scores are individual scores from the Score column, not team totals
+    - There must be exactly 2 teams in the output - no more, no less
     """
 
     parsed_data_list = []
@@ -364,85 +408,12 @@ def parse_game_score(image_path, num_attempts=1):
             print(f"\n{'='*50}")
             print(f"Attempt {attempt + 1}")
             print(f"{'='*50}")
-            
-            print(f'Parsing game score from: {image_path}')
 
-            # Read the original image using PIL
-            original_image = Image.open(image_path)
-            width, height = original_image.size
-            
-            print(f"Original Image: {width}x{height}")
-            
-            # Calculate max possible dimensions while maintaining aspect ratio
-            aspect_ratio = width / height
-            
-            # Try to maximize size within token and dimension limits
-            # tokens = (w * h)/750 <= 1200
-            # w <= 1200
-            # h = w/aspect_ratio
-            
-            # From token formula: w * (w/aspect_ratio) <= 1200 * 750
-            max_width_from_tokens = int(math.sqrt(1200 * 750 * aspect_ratio))
-            max_width = min(1200, max_width_from_tokens)
-            max_height = int(max_width / aspect_ratio)
+            print('Parsing game score from the cropped scoreboard image.')
 
-            # Only resize if original dimensions are smaller than max allowed
-            if width < max_width and height < max_height:
-                print("\nOriginal Image:")
-                print(f"- Dimensions: {width}x{height}")
-                print(f"- Aspect ratio: {aspect_ratio:.2f}")
-                print(f"- Current tokens: {(width * height)/750:.0f}")
-                
-                print("\nMax Possible:")
-                print(f"- Dimensions: {max_width}x{max_height}")
-                print(f"- Max tokens: {(max_width * max_height)/750:.0f}")
-                
-                # Decrease by 10% for each subsequent attempt
-                reduction_factor = 0.9 ** attempt
-                new_width = int(max_width * reduction_factor)
-                new_height = int(new_width / aspect_ratio)
-                
-                print("\nResized Image:")
-                print(f"- Dimensions: {new_width}x{new_height}")
-                print(f"- Reduction factor: {reduction_factor:.2f}")
-                
-                resized_image = original_image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
-                """ # Save with proper extension
-                save_path = f"attempt{attempt+1}.{original_image.format.lower()}"
-                resized_image.save(save_path)
-                print(f"\nSaved resized image to: {save_path}") """
-            else:
-                print(f"Image is at max dimensions. Cropping by {attempt * 10}%")
-                
-                # Calculate crop dimensions
-                crop_factor = 0.9 ** attempt  # Reduce by 10% each attempt
-                crop_width = int(width * crop_factor)
-                crop_height = int(height * crop_factor)
-                
-                # Calculate margins to center the crop
-                left = (width - crop_width) // 2
-                top = (height - crop_height) // 2
-                right = left + crop_width
-                bottom = top + crop_height
-                
-                # Crop the image
-                resized_image = original_image.crop((left, top, right, bottom))
-                
-            # Determine the format and set save parameters
-            save_kwargs = {}
-            format_lower = original_image.format.lower()
-
-            if format_lower == 'jpeg' or format_lower == 'jpg':
-                save_kwargs.update({'quality': 100, 'optimize': True, 'progressive': True})
-            elif format_lower == 'png':
-                save_kwargs.update({'compress_level': 0})
-            elif format_lower == 'webp':
-                save_kwargs.update({'quality': 100, 'method': 6})
-
-            # Convert the resized image to bytes and encode in base64
+            # Convert the cropped image to bytes and encode in base64
             buffered = BytesIO()
-            resized_image.save(buffered, format=original_image.format, **save_kwargs)
+            cropped_image.save(buffered, format='PNG')
             image_data = base64.b64encode(buffered.getvalue()).decode("utf-8")
 
             # Send image and prompt to Claude
@@ -469,7 +440,13 @@ def parse_game_score(image_path, num_attempts=1):
             )
 
             # Parse JSON response
-            parsed_data = json.loads(message.content[0].text.strip())
+            parsed_text = message.content[0].text.strip()
+            parsed_data = json.loads(parsed_text)
+
+            # Remove any 'attempts_data' key to prevent duplication
+            if 'attempts_data' in parsed_data:
+                del parsed_data['attempts_data']
+
             print(f"Parsed Claude data (attempt {attempt+1}): {parsed_data}")
             parsed_data_list.append({
                 'attempt': attempt + 1,
@@ -494,6 +471,7 @@ def parse_game_score(image_path, num_attempts=1):
     # Combine parsed data using consensus mechanism
     valid_parsed_data = [pd['parsed_data'] for pd in parsed_data_list if pd['parsed_data'] is not None]
     consensus_data = compute_consensus(valid_parsed_data)
+
     # Include all attempt data in consensus_data for later analysis
     consensus_data['attempts_data'] = parsed_data_list
 

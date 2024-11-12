@@ -1,8 +1,9 @@
-def print_game_results(game_result_dictionary):
+def print_game_results(game_result_dictionary, full_image_path):
     """
     Prints the game results in a formatted manner.
     """
     print("\n=== GAME RESULTS ===")
+    print(f"Image file: {full_image_path}")
     for team_name, team_info in game_result_dictionary['teams'].items():
         print(f"\n{team_name} ({team_info['victory_points']} VP)")
         print("-" * 40)

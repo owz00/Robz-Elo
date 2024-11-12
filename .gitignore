@@ -9,3 +9,8 @@ __pycache__
 # LLM Config
 configs/llm_config.py
 
+# Test Images
+test_image_sets/*
+!test_image_sets/set_1/
+cropped_scoreboards/
+
