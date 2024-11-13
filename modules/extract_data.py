@@ -658,8 +658,42 @@ def parse_game_score(image_path, num_attempts=1):
 def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
     """
     Allows the user to implement corrections to the game dictionary.
-    Returns the possibly modified game_result_dictionary, user_corrections dictionary,
-    and updated skip_edit_prompt flag.
+
+    This function provides an interactive prompt for the user to make corrections to the game results.
+    The user can choose to edit team victory points, player details, change the winner, or add/remove players.
+    The function also allows the user to skip the editing prompt for future sessions.
+
+    **Parameters:**
+    - `game_result_dictionary` (dict): The dictionary containing game results, including teams and players.
+    - `skip_edit_prompt` (bool): Flag indicating whether to skip the editing prompt.
+
+    **Returns:**
+    - `game_result_dictionary` (dict): The possibly modified game result dictionary.
+    - `user_corrections` (dict): A dictionary containing information about the edits made by the user.
+    - `skip_edit_prompt` (bool): Updated flag indicating whether to skip the editing prompt in future sessions.
+
+    **Example:**
+
+    ```python
+    game_result_dictionary = {
+        'teams': {
+            'Team A': {
+                'players': [{'name': 'Alice', 'score': 10}, {'name': 'Bob', 'score': 15}],
+                'victory_points': 26
+            },
+            'Team B': {
+                'players': [{'name': 'Charlie', 'score': 20}, {'name': 'David', 'score': 5}],
+                'victory_points': 25
+            }
+        },
+        'winner': 'Team A'
+    }
+    skip_edit_prompt = False
+
+    updated_game_result_dictionary, user_corrections, skip_edit_prompt = implement_user_corrections(game_result_dictionary, skip_edit_prompt)
+    ```
+
+    In this example, the user is prompted to make corrections to the game results. The function returns the updated game result dictionary, a dictionary of user corrections, and the updated skip edit prompt flag.
     """
     user_corrections = {
         "edited": False,
@@ -752,8 +786,8 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
 
         elif choice == '3':
             old_winner = game_result_dictionary['winner']
-            new_winner = input(f"Enter new winner {team_names + ['TIE']}: ").strip()
-            if new_winner in team_names or new_winner.upper() == 'TIE':
+            new_winner = input(f"Enter new winner {team_names}: ").strip()
+            if new_winner in team_names:
                 game_result_dictionary['winner'] = new_winner
                 user_corrections['edits'].append({
                     "field": "winner",

@@ -19,17 +19,16 @@ from modules.extract_data import parse_game_score, implement_user_corrections, o
 from modules.save_data import process_and_save_game_data, prepareData
 from modules.utils import print_game_results, validate_configuration, display_final_elo_scores, load_elo_database
 
-from configs.llm_config import API_KEYS
-from configs.app_config import NUM_ATTEMPTS, IMAGE_FOLDER_PATH, ELO_JSON_DATABASE_PATH, GAME_RESULTS_JSON_PATH, LOG_LEVEL
+from configs.app_config import NUM_ATTEMPTS, ELO_JSON_DATABASE_PATH, LOGGING_FILE_PATH, LOG_LEVEL
 
 # Configure Loguru
 logger.remove()
-logger.add("robz_elo_system.log", rotation="5 MB", level="DEBUG", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>")
+logger.add(LOGGING_FILE_PATH, rotation="5 MB", level="DEBUG", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>")
 logger.add(sys.stdout, level=LOG_LEVEL, colorize=True, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>")
 
 def main():
 
-    image_files, image_path = validate_configuration()
+    image_files, image_folder_path = validate_configuration()
 
     # Filter image files 
     image_files = [f for f in image_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
@@ -43,9 +42,8 @@ def main():
 
     for image_file in image_files:
         try:
-
             processed_files += 1  # Increment counter (used to track the number of files processed)
-            full_image_path = os.path.join(image_path, image_file)
+            full_image_path = os.path.join(image_folder_path, image_file)
 
             # Parse the game score image (extracts the game result data from the image)
             game_result_dictionary = parse_game_score(full_image_path, num_attempts=NUM_ATTEMPTS)
