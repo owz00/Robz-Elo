@@ -3,85 +3,100 @@ import base64
 import json
 import cv2
 import numpy as np
+import os
 
 from PIL import Image 
 from anthropic import Anthropic
 from io import BytesIO
 from collections import Counter
-from difflib import SequenceMatcher  
-import os
+from difflib import SequenceMatcher 
+from loguru import logger
 
 from configs.llm_config import API_KEYS
 from modules.elo_calculation import calculatePoints
 from modules.utils import print_game_results
-"""
+
+
 def order_data(data, eloDatabase):
-    playerDictionary = {}
+    """
+    Organizes player data from game results and Elo database.
 
-    for team_name, team_info in data['teams'].items():
-        team_players = []
-        for player in team_info['players']:
-            player_name = player['name']
-            if player_name in eloDatabase['PlayerName'].values:
-                playerIndex = eloDatabase.index[eloDatabase['PlayerName'] == player_name][0]
-                starting_elo = eloDatabase.at[playerIndex, 'Starting Elo']
-                games_played = eloDatabase.at[playerIndex, 'games played']
-                team_players.append([
-                    player_name,
-                    starting_elo,
-                    games_played
-                ])
-            else:
-                team_players.append([player_name, 1200, 0])  # Default Elo and games played
+    This function processes the input game data and matches each player with their corresponding
+    Elo rating and games played from the Elo database. If a player is not found in the database,
+    default values are used.
 
-        playerDictionary[team_name] = {
-            'players': team_players,
-            'Points': data['teams'][team_name]['victory_points'],
-            'winProbability': None  # Will be calculated later
+    **Parameters:**
+    - `data` (dict): Game result data containing teams and players.
+    - `eloDatabase` (dict): Database containing player Elo ratings and games played.
+
+    **Returns:**
+    - A dictionary with team names as keys. Each team contains:
+      - `players`: A list of players with their name, starting Elo, and games played.
+      - `Points`: The team's victory points.
+      - `winProbability`: Placeholder for win probability calculation.
+
+    **Example:**
+
+    ```python
+    data = {
+        'teams': {
+            'Team A': {
+                'players': [{'name': 'Alice'}, {'name': 'Bob'}],
+                'victory_points': 10
+            }
         }
+    }
+    eloDatabase = {
+        'Players': [
+            {'PlayerName': 'Alice', 'Starting Elo': 1300, 'games played': 5},
+            {'PlayerName': 'Bob', 'Starting Elo': 1250, 'games played': 3}
+        ]
+    }
+    result = order_data(data, eloDatabase)
+    print(result)
+    # Output:
+    # {
+    #     'Team A': {
+    #         'players': [
+    #             ['Alice', 1300, 5],
+    #             ['Bob', 1250, 3]
+    #         ],
+    #         'Points': 10,
+    #         'winProbability': None
+    #     }
+    # }
+    ```
 
-    return playerDictionary
-"""
-
-def order_data(data, eloDatabase):
+    """
     playerDictionary = {}
 
-    # Loop over each team in the input data
     for team_name, team_info in data['teams'].items():
         team_players = []
 
-        # Loop over each player in the team
         for player in team_info['players']:
             player_name = player['name']
-
-            # Find the player's data in the JSON structure under "Players"
             player_data = next((p for p in eloDatabase["Players"] if p["PlayerName"] == player_name), None)
             
-            # Use data from JSON or default values if player not found
             if player_data:
-                starting_elo = player_data.get("Starting Elo", 1200)  # Default to 1200 if missing
-                games_played = player_data.get("games played", 0)     # Default to 0 if missing
+                starting_elo = player_data.get("Starting Elo", 1200)
+                games_played = player_data.get("games played", 0)
             else:
                 starting_elo = 1200
                 games_played = 0
 
-            # Append player's data to the team_players list
             team_players.append([
                 player_name,
                 starting_elo,
                 games_played
             ])
 
-        # Add the team and its players to the playerDictionary
         playerDictionary[team_name] = {
             'players': team_players,
             'Points': team_info['victory_points'],
-            'winProbability': None  # This will be calculated later
+            'winProbability': None
         }
 
     return playerDictionary
-
-
 
 def get_majority_value(values):
     """
@@ -128,6 +143,21 @@ def similar(a, b):
 def group_similar_names(names, threshold=0.8):
     """
     Groups similar names together based on a similarity threshold.
+
+    **Parameters:**
+    - `names` (list of str): A list of names to be grouped.
+    - `threshold` (float): A similarity threshold between 0 and 1. Names with a similarity ratio above this threshold are grouped together.
+
+    **Returns:**
+    - A list of lists, where each sublist contains names that are considered similar.
+
+    **Example:**
+
+    ```python
+    names = ['Team Alpha', 'team alpha', 'Team Beta', 'TEAM BETA', 'Allies', 'Axis']
+    result = group_similar_names(names, threshold=0.8)
+    print(result)  # Output: [['Team Alpha', 'team alpha'], ['Team Beta', 'TEAM BETA'], ['Allies'], ['Axis']]
+    ```
     """
     groups = []
     generic_team_names = {'TEAM A', 'TEAM B', 'ALLIES', 'AXIS'}  # Keep these names separate
@@ -155,8 +185,117 @@ def group_similar_names(names, threshold=0.8):
 
 def compute_consensus(parsed_data_list):
     """
-    Combines multiple parsed data dictionaries into a single consensus dictionary,
-    handling similar team names.
+    Combines multiple parsed game data dictionaries into a single consensus dictionary, handling similar team names.
+
+    This function processes multiple parsing attempts of game result data to create a consensus result.
+    It groups similar team names, resolves discrepancies in victory points and player information,
+    and outputs a unified game result. This helps in mitigating errors from individual parsing attempts,
+    especially when data may have minor inconsistencies.
+
+    **Parameters:**
+    - `parsed_data_list` (list of dict): A list of dictionaries containing parsed game data from multiple attempts.
+
+    **Returns:**
+    - `consensus_data` (dict): A dictionary with consolidated game results, including consensus team names, victory points, players, and winner.
+
+    **Example:**
+
+    ```python
+    parsed_data_list = [
+        {
+            "teams": {
+                "Team Alpha": {
+                    "victory_points": 15,
+                    "players": [
+                        {"name": "Alice", "score": 2000},
+                        {"name": "Bob", "score": 1800}
+                    ]
+                },
+                "Team Beta": {
+                    "victory_points": 10,
+                    "players": [
+                        {"name": "Charlie", "score": 1900},
+                        {"name": "David", "score": 1700}
+                    ]
+                }
+            },
+            "winner": "Team Alpha"
+        },
+        {
+            "teams": {
+                "Team Alfa": {  # Slight variation in team name
+                    "victory_points": 15,
+                    "players": [
+                        {"name": "Alyce", "score": 2000},  # Slight variation in player name
+                        {"name": "Bob", "score": 1800}
+                    ]
+                },
+                "Team Beta": {
+                    "victory_points": 12,  # Different victory points
+                    "players": [
+                        {"name": "Charlie", "score": 1900},
+                        {"name": "Dave", "score": 1700}  # Slight variation in player name
+                    ]
+                }
+            },
+            "winner": "Team Alfa"
+        },
+        {
+            "teams": {
+                "Team Alpha": {
+                    "victory_points": 15,
+                    "players": [
+                        {"name": "Alice", "score": 2000},
+                        {"name": "Robert", "score": 1800}  # Slight variation in player name
+                    ]
+                },
+                "Team Beta": {
+                    "victory_points": 10,
+                    "players": [
+                        {"name": "Charlie", "score": 1900},
+                        {"name": "David", "score": 1700}
+                    ]
+                }
+            },
+            "winner": "Team Alpha"
+        }
+    ]
+
+    consensus_data = compute_consensus(parsed_data_list)
+    print(json.dumps(consensus_data, indent=2))
+
+    # Output:
+    # {
+    #   "winner": "Team Alpha",
+    #   "teams": {
+    #     "Team Alpha": {
+    #       "victory_points": 15,
+    #       "players": [
+    #         {"name": "Alice", "score": 2000},
+    #         {"name": "Bob", "score": 1800}
+    #       ]
+    #     },
+    #     "Team Beta": {
+    #       "victory_points": 10,
+    #       "players": [
+    #         {"name": "Charlie", "score": 1900},
+    #         {"name": "David", "score": 1700}
+    #       ]
+    #     }
+    #   }
+    # }
+
+    ```
+
+    In this example, the function consolidates data from three parsing attempts:
+
+    - **Team Names**: It recognizes that "Team Alpha" and "Team Alfa" are the same team by grouping similar names.
+    - **Victory Points**: Resolves discrepancies in victory points for "Team Beta" by selecting the most frequent value (10).
+    - **Player Names**: Handles slight variations in player names like "Alice" vs. "Alyce" and "David" vs. "Dave", choosing the most common names.
+    - **Winner**: Determines the consensus winner as "Team Alpha" based on the majority of attempts.
+
+    This consensus helps ensure accurate game results despite minor inconsistencies in individual parsing attempts.
+
     """
     consensus_data = {}
 
@@ -298,7 +437,7 @@ def detect_scoreboard(image_path, save_cropped=True, cropped_folder="cropped_sco
             scoreboard_rect = (x, y, w, h)
     
     if scoreboard_rect is None:
-        print("Could not detect scoreboard, using original image")
+        logger.warning("Could not detect scoreboard, using original image")
         cropped = img
     else:
         # Crop the scoreboard without padding
@@ -330,8 +469,6 @@ def detect_scoreboard(image_path, save_cropped=True, cropped_folder="cropped_sco
     
     return pil_image
 
-
-
 def parse_game_score(image_path, num_attempts=1):
     """
     Parses a game score image using the Claude API and returns structured data.
@@ -357,7 +494,7 @@ def parse_game_score(image_path, num_attempts=1):
     # Detect and crop the scoreboard from the image
     cropped_image = detect_scoreboard(image_path)
     if cropped_image is None:
-        print("Error: Unable to process image for scoreboard detection.")
+        logger.error("Error: Unable to process image for scoreboard detection.")
         return None
 
     # Determine media type based on the image format (we'll use PNG for the cropped image)
@@ -446,11 +583,11 @@ def parse_game_score(image_path, num_attempts=1):
 
     for attempt in range(num_attempts):
         try:
-            print(f"\n{'='*50}")
-            print(f"Attempt {attempt + 1}")
-            print(f"{'='*50}")
+            logger.info(f"{'='*50}")
+            logger.info(f"Attempt {attempt + 1}")
+            logger.info(f"{'='*50}")
 
-            print('Parsing game score from the cropped scoreboard image.')
+            logger.info('Parsing game score from the cropped scoreboard image.')
 
             # Convert the cropped image to bytes and encode in base64
             buffered = BytesIO()
@@ -488,7 +625,7 @@ def parse_game_score(image_path, num_attempts=1):
             if 'attempts_data' in parsed_data:
                 del parsed_data['attempts_data']
 
-            print(f"Parsed Claude data (attempt {attempt+1}): {parsed_data}")
+            logger.debug(f"Parsed Claude data (attempt {attempt+1}): {parsed_data}")
             parsed_data_list.append({
                 'attempt': attempt + 1,
                 'parsed_data': parsed_data,
@@ -497,7 +634,7 @@ def parse_game_score(image_path, num_attempts=1):
 
         except Exception as e:
             error_message = str(e)
-            print(f"Error parsing game score on attempt {attempt+1}: {error_message}")
+            logger.error(f"Error parsing game score on attempt {attempt+1}: {error_message}")
             parsed_data_list.append({
                 'attempt': attempt + 1,
                 'parsed_data': None,
@@ -506,7 +643,7 @@ def parse_game_score(image_path, num_attempts=1):
             continue
 
     if not parsed_data_list:
-        print("No valid parsed data obtained.")
+        logger.error("No valid parsed data obtained.")
         return None
 
     # Combine parsed data using consensus mechanism
@@ -531,7 +668,7 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
 
     # Check if the user has chosen to skip the editing prompt
     if skip_edit_prompt:
-        print("Skipping edit prompt as per user preference.")
+        logger.info("Skipping edit prompt as per user preference.")
         return game_result_dictionary, user_corrections, skip_edit_prompt
 
     team_names = list(game_result_dictionary['teams'].keys())
@@ -541,19 +678,19 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
         if edit == 'never':
             # Update the skip_edit_prompt variable to skip prompt in the future
             skip_edit_prompt = True
-            print("You will no longer be prompted to edit results during this session.")
+            logger.info("You will no longer be prompted to edit results during this session.")
             break
         elif edit != 'y':
             break
 
         user_corrections['edited'] = True
 
-        print("\nEditing options:")
-        print("1. Edit team victory points")
-        print("2. Edit player details")
-        print("3. Change winner")
-        print("4. Add or remove player")
-        print("5. Exit editing")
+        logger.info("Editing options:")
+        logger.info("1. Edit team victory points")
+        logger.info("2. Edit player details")
+        logger.info("3. Change winner")
+        logger.info("4. Add or remove player")
+        logger.info("5. Exit editing")
 
         choice = input("Enter your choice (1-5): ")
 
@@ -569,17 +706,17 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                         "new_value": new_vp
                     })
                 except ValueError:
-                    print("Invalid input. Victory points must be a number.")
+                    logger.error("Invalid input. Victory points must be a number.")
 
         elif choice == '2':
             team_name = input(f"Enter team to edit {team_names}: ").strip()
             if team_name not in team_names:
-                print("Invalid team name.")
+                logger.error("Invalid team name.")
                 continue
 
-            print("\nCurrent players:")
+            logger.info("Current players:")
             for i, player in enumerate(game_result_dictionary['teams'][team_name]['players']):
-                print(f"{i+1}. {player['name']} - Score: {player['score']}")
+                logger.info(f"{i+1}. {player['name']} - Score: {player['score']}")
 
             try:
                 player_num = int(input("Enter player number to edit: ")) - 1
@@ -607,11 +744,11 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                                 "new_value": int(new_score)
                             })
                         except ValueError:
-                            print("Invalid score. Must be a number.")
+                            logger.error("Invalid score. Must be a number.")
                 else:
-                    print("Invalid player number.")
+                    logger.error("Invalid player number.")
             except ValueError:
-                print("Invalid input. Please enter a number.")
+                logger.error("Invalid input. Please enter a number.")
 
         elif choice == '3':
             old_winner = game_result_dictionary['winner']
@@ -624,12 +761,12 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                     "new_value": new_winner
                 })
             else:
-                print("Invalid team name.")
+                logger.error("Invalid team name.")
 
         elif choice == '4':
             team_name = input(f"Enter team to modify {team_names}: ").strip()
             if team_name not in team_names:
-                print("Invalid team name.")
+                logger.error("Invalid team name.")
                 continue
 
             action = input("Would you like to add or remove a player? (add/remove): ").lower()
@@ -638,7 +775,7 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                 try:
                     new_score = int(input("Enter new player's score: "))
                 except ValueError:
-                    print("Invalid score. Must be a number.")
+                    logger.error("Invalid score. Must be a number.")
                     continue
 
                 game_result_dictionary['teams'][team_name]['players'].append({
@@ -652,9 +789,9 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                 })
 
             elif action == 'remove':
-                print("\nCurrent players:")
+                logger.info("Current players:")
                 for i, player in enumerate(game_result_dictionary['teams'][team_name]['players']):
-                    print(f"{i+1}. {player['name']} - Score: {player['score']}")
+                    logger.info(f"{i+1}. {player['name']} - Score: {player['score']}")
                 try:
                     player_num = int(input("Enter player number to remove: ")) - 1
                     if 0 <= player_num < len(game_result_dictionary['teams'][team_name]['players']):
@@ -664,18 +801,18 @@ def implement_user_corrections(game_result_dictionary, skip_edit_prompt):
                             "action": "remove",
                             "player": removed_player
                         })
-                        print(f"Removed player: {removed_player['name']}")
+                        logger.info(f"Removed player: {removed_player['name']}")
                     else:
-                        print("Invalid player number.")
+                        logger.error("Invalid player number.")
                 except ValueError:
-                    print("Invalid input. Please enter a number.")
+                    logger.error("Invalid input. Please enter a number.")
             else:
-                print("Invalid action. Please choose 'add' or 'remove'.")
+                logger.error("Invalid action. Please choose 'add' or 'remove'.")
 
         elif choice == '5':
             break
         else:
-            print("Invalid choice.")
+            logger.error("Invalid choice.")
 
         # Re-print game results after each edit
         print_game_results(game_result_dictionary)

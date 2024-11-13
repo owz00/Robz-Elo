@@ -2,10 +2,9 @@ import pandas as pd
 import json
 import os
 import json
-from datetime import datetime  # Added import
-
-
-
+from datetime import datetime  
+from loguru import logger
+from configs.app_config import ELO_JSON_DATABASE_PATH, GAME_RESULTS_JSON_PATH
 
 def prepareData(updatedDictionary, eloDatabase):
     """
@@ -43,7 +42,7 @@ def prepareData(updatedDictionary, eloDatabase):
                         'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
                     }
                     eloDatabase["Players"].append(new_player_data)
-                    print(f"Added new player to database: {playerName}")
+                    logger.info(f"Added new player to database: {playerName}")
             else:
                 new_player_data = {
                     'PlayerName': playerName,
@@ -53,20 +52,14 @@ def prepareData(updatedDictionary, eloDatabase):
                     'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
                     }
                 eloDatabase["Players"].append(new_player_data)
-                print(f"Added new player to databaseee: {playerName}")
+                logger.info(f"Added new player to database: {playerName}")
 
 
     # Save updated database to JSON file
-    with open("players_data.json", "w") as file:
+    with open(ELO_JSON_DATABASE_PATH, "w") as file:
         json.dump(eloDatabase, file, indent=4)
 
     return eloDatabase
-
-
-
-
-
-
 
 def process_and_save_game_data(game_result_dictionary, user_corrections, image_file):
     """
@@ -88,12 +81,12 @@ def process_and_save_game_data(game_result_dictionary, user_corrections, image_f
     }
 
     # Load existing game data
-    if os.path.exists('game_results.json'):
+    if os.path.exists(GAME_RESULTS_JSON_PATH):
         try:
-            with open('game_results.json', 'r') as file:
+            with open(GAME_RESULTS_JSON_PATH, 'r') as file:
                 game_results = json.load(file)
         except json.JSONDecodeError:
-            print("Error: 'game_results.json' is corrupted. Overwriting file.")
+            logger.error("Error: 'GAME_RESULTS_JSON_PATH' is corrupted. Overwriting file.")
             game_results = []
     else:
         game_results = []
@@ -103,11 +96,11 @@ def process_and_save_game_data(game_result_dictionary, user_corrections, image_f
 
     # Save updated game data
     try:
-        with open('game_results.json', 'w') as file:
+        with open(GAME_RESULTS_JSON_PATH, 'w') as file:
             json.dump(game_results, file, indent=2)
-        print("Game results saved to 'game_results.json'.")
+        logger.info(f"Game results saved to '{GAME_RESULTS_JSON_PATH}'.")
     except IOError as e:
-        print(f"Failed to save game results: {e}")
+        logger.error(f"Failed to save game results: {e}")
 
 
 
