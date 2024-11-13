@@ -68,13 +68,28 @@ def order_data(data, eloDatabase):
     ```
 
     """
+#for every player check to see if any other player in the database has the player name as a past name
+#then if it does, set the player name the current name of the player whivh they are a past name of
+#for playerName in playerNames:
+  #for  player in eloDatabase:
+        
+
+
+
+
     playerDictionary = {}
 
     for team_name, team_info in data['teams'].items():
         team_players = []
 
         for player in team_info['players']:
-            player_name = player['name']
+            current_player_name = find_name(player['name'], eloDatabase)
+            if current_player_name:
+                player_name = current_player_name
+            else:    
+                player_name = player['name']
+
+
             player_data = next((p for p in eloDatabase["Players"] if p["PlayerName"] == player_name), None)
             
             if player_data:
@@ -97,6 +112,31 @@ def order_data(data, eloDatabase):
         }
 
     return playerDictionary
+
+
+def find_name(incoming_name, eloDatabase):
+    """
+    returns the name of the player that has the incoming_name in their past names array
+    """
+    returned_names = []
+    # Iterate through all players in the eloDatabase
+    for player in eloDatabase['Players']:
+        # Check if the incoming name is not already a player name
+        if incoming_name in player['PlayerName']:
+            return None
+        # Check if the incoming name matches any name in the PastNames list
+        if incoming_name in player['past names']:
+            returned_names.append(player['PlayerName'])  # Return the current PlayerName if a match is found
+            
+    if len(returned_names) > 1:
+        print(f"'multiple players have '{incoming_name}' in their past names list'")
+        return None
+    else:
+        print(f"'{incoming_name}' changed to '{returned_names[0]}'")
+        return returned_names[0]
+
+    return None  # Return None if no match is found
+
 
 def get_majority_value(values):
     """

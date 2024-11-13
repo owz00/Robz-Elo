@@ -38,7 +38,7 @@ def prepareData(updatedDictionary, eloDatabase):
                         'PlayerName': playerName,
                         'Starting Elo': newPlayerElo,
                         'games played': gamesPlayed,
-                        'past names': "null",  # Or handle if you need specific logic for past names
+                        'past names': [],  # Or handle if you need specific logic for past names
                         'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
                     }
                     eloDatabase["Players"].append(new_player_data)
@@ -48,7 +48,7 @@ def prepareData(updatedDictionary, eloDatabase):
                     'PlayerName': playerName,
                     'Starting Elo': newPlayerElo,
                     'games played': gamesPlayed,
-                    'past names': "null",  # Or handle if you need specific logic for past names
+                    'past names': [],  # Or handle if you need specific logic for past names
                     'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
                     }
                 eloDatabase["Players"].append(new_player_data)

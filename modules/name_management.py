@@ -1,7 +1,12 @@
 import json
 import os
 from loguru import logger
-from configs.app_config import ELO_JSON_DATABASE_PATH
+
+from config.app_config.py import ELO_JSON_DATABASE_PATH
+
+
+
+
 
 def change_player_name(json_file_path, old_name, new_name):
     try:
@@ -27,16 +32,13 @@ def change_player_name(json_file_path, old_name, new_name):
                 # Change the player's name
                 player["PlayerName"] = new_name
 
-                # Update past names
-                if player["past names"] == "null":
-                    # Initialize with a list containing the old name
-                    player["past names"] = [old_name]
-                elif isinstance(player["past names"], list):
-                    # Append the old name to the past names list if it’s already a list
+                # Ensure past names is a list, initialize if needed
+                if "past names" not in player or not isinstance(player["past names"], list):
+                    player["past names"] = []
+
+                # Add old_name to past names if not already present
+                if old_name not in player["past names"]:
                     player["past names"].append(old_name)
-                else:
-                    # If it's not "null" or a list, convert to a list and add the old name
-                    player["past names"] = [player["past names"], old_name]
 
                 player_found = True
                 logger.info(f"Player name changed from '{old_name}' to '{new_name}', and '{old_name}' added to past names.")
@@ -78,19 +80,18 @@ def add_past_name(json_file_path, player_name, past_name):
     try:
         for player in data["Players"]:
             if player["PlayerName"] == player_name:
-                # Update past names
-                if player["past names"] == "null":
-                    # Initialize with a list containing the past name
-                    player["past names"] = [past_name]
-                elif isinstance(player["past names"], list):
-                    # Append the past name to the past names list if it’s already a list
+                # Ensure past names is a list, initialize if needed
+                if "past names" not in player or not isinstance(player["past names"], list):
+                    player["past names"] = []
+
+                # Add past_name to past names if not already present
+                if past_name not in player["past names"]:
                     player["past names"].append(past_name)
+                    logger.info(f"'{past_name}' added to the past names of '{player_name}'.")
                 else:
-                    # If it's not "null" or a list, convert to a list and add the past name
-                    player["past names"] = [player["past names"], past_name]
+                    logger.info(f"'{past_name}' is already listed as a past name for '{player_name}'.")
 
                 player_found = True
-                logger.info(f"'{past_name}' added to the past names of '{player_name}'.")
                 break
 
         if not player_found:
