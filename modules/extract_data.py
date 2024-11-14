@@ -23,11 +23,12 @@ def order_data(data, eloDatabase):
 
     This function processes the input game data and matches each player with their corresponding
     Elo rating and games played from the Elo database. If a player is not found in the database,
-    default values are used.
+    default values are used. The function also checks for past player names and updates them to 
+    their current names if found in the database.
 
     **Parameters:**
     - `data` (dict): Game result data containing teams and players.
-    - `eloDatabase` (dict): Database containing player Elo ratings and games played.
+    - `eloDatabase` (dict): Database containing player Elo ratings, games played, and past names.
 
     **Returns:**
     - A dictionary with team names as keys. Each team contains:
@@ -41,15 +42,17 @@ def order_data(data, eloDatabase):
     data = {
         'teams': {
             'Team A': {
-                'players': [{'name': 'Alice'}, {'name': 'Bob'}],
+                'players': [{'name': 'THEAK74'}, {'name': 'Bob'}],
                 'victory_points': 10
             }
         }
     }
     eloDatabase = {
         'Players': [
-            {'PlayerName': 'Alice', 'Starting Elo': 1300, 'games played': 5},
-            {'PlayerName': 'Bob', 'Starting Elo': 1250, 'games played': 3}
+            {'PlayerName': 'THE LONG SHLONG', 'Starting Elo': 1300, 'games played': 5, 
+             'past names': ['THEAK74']},
+            {'PlayerName': 'Bob', 'Starting Elo': 1250, 'games played': 3, 
+             'past names': []}
         ]
     }
     result = order_data(data, eloDatabase)
@@ -58,7 +61,7 @@ def order_data(data, eloDatabase):
     # {
     #     'Team A': {
     #         'players': [
-    #             ['Alice', 1300, 5],
+    #             ['THE LONG SHLONG', 1300, 5],  # Name updated from past name
     #             ['Bob', 1250, 3]
     #         ],
     #         'Points': 10,
@@ -68,14 +71,6 @@ def order_data(data, eloDatabase):
     ```
 
     """
-#for every player check to see if any other player in the database has the player name as a past name
-#then if it does, set the player name the current name of the player whivh they are a past name of
-#for playerName in playerNames:
-  #for  player in eloDatabase:
-        
-
-
-
 
     playerDictionary = {}
 
@@ -113,7 +108,7 @@ def order_data(data, eloDatabase):
 
     return playerDictionary
 
-
+@logger.catch
 def find_name(incoming_name, eloDatabase):
     """
     Returns the current player name from the Elo database if the incoming name matches any past names.

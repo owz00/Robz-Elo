@@ -2,11 +2,9 @@ import json
 import os
 from loguru import logger
 
-from config.app_config.py import ELO_JSON_DATABASE_PATH
+from configs.app_config import ELO_JSON_DATABASE_PATH
 
-
-
-
+# Run from root directory with: python -m modules.name_management
 
 def change_player_name(json_file_path, old_name, new_name):
     try:
@@ -112,8 +110,24 @@ def add_past_name(json_file_path, player_name, past_name):
 def main():
     # Get the directory of the current script and build the path to the JSON file
     try:
+        # Get script directory
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        json_file_path = os.path.join(script_dir, ELO_JSON_DATABASE_PATH)
+        project_root = os.path.abspath(os.path.join(script_dir, os.pardir))
+        if not os.path.exists(project_root):
+            logger.error(f"Error: Project root directory '{project_root}' does not exist")
+            return
+
+        # Validate ELO_JSON_DATABASE_PATH is defined
+        if not ELO_JSON_DATABASE_PATH:
+            logger.error("Error: ELO_JSON_DATABASE_PATH is not defined")
+            return
+
+        # Build and validate full JSON file path
+        json_file_path = os.path.join(project_root, ELO_JSON_DATABASE_PATH)
+        if not os.path.exists(os.path.dirname(json_file_path)):
+            logger.error(f"Error: Directory for JSON file '{os.path.dirname(json_file_path)}' does not exist")
+            return
+        
 
         # Prompt the user for an action
         action = input("Choose an action (1 to change name, 2 to add past name): ")

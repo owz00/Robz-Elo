@@ -26,6 +26,7 @@ logger.remove()
 logger.add(LOGGING_FILE_PATH, rotation="5 MB", level="DEBUG", format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>")
 logger.add(sys.stdout, level=LOG_LEVEL, colorize=True, format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level}</level> | <level>{message}</level>")
 
+@logger.catch
 def main():
 
     image_files, image_folder_path = validate_configuration()
