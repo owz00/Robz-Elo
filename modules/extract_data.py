@@ -116,26 +116,29 @@ def order_data(data, eloDatabase):
 
 def find_name(incoming_name, eloDatabase):
     """
-    returns the name of the player that has the incoming_name in their past names array
+    Returns the current player name from the Elo database if the incoming name matches any past names.
     """
     returned_names = []
-    # Iterate through all players in the eloDatabase
-    for player in eloDatabase['Players']:
-        # Check if the incoming name is not already a player name
-        if incoming_name in player['PlayerName']:
-            return None
-        # Check if the incoming name matches any name in the PastNames list
-        if incoming_name in player['past names']:
-            returned_names.append(player['PlayerName'])  # Return the current PlayerName if a match is found
-            
-    if len(returned_names) > 1:
-        print(f"'multiple players have '{incoming_name}' in their past names list'")
-        return None
-    else:
-        print(f"'{incoming_name}' changed to '{returned_names[0]}'")
-        return returned_names[0]
 
-    return None  # Return None if no match is found
+    # Iterate through all players in the Elo database
+    for player in eloDatabase['Players']:
+        # Check if the incoming name is already a current player name
+        if incoming_name == player['PlayerName']:
+            return incoming_name  # No change needed
+
+        # Check if the incoming name matches any name in the 'past names' list
+        if incoming_name in player.get('past names', []):
+            returned_names.append(player['PlayerName'])  # Collect the current player names
+
+    if len(returned_names) > 1:
+        logger.warning(f"Multiple players have '{incoming_name}' in their past names list")
+        return None
+    elif len(returned_names) == 1:
+        logger.info(f"'{incoming_name}' changed to '{returned_names[0]}'")
+        return returned_names[0]
+    else:
+        # No matches found; return None to indicate no change
+        return None
 
 
 def get_majority_value(values):
