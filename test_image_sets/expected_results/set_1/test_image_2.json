@@ -1,0 +1,23 @@
+{
+  "winner": "USA",
+  "teams": {
+    "USA": {
+      "victory_points": 160,
+      "players": [
+        {"name": "Starly", "score": 1240},
+        {"name": "THEAK74", "score": 609},
+        {"name": "ShadowFalcon", "score": 462},
+        {"name": "Taters", "score": 411}
+      ]
+    },
+    "AXIS": {
+      "victory_points": 79,
+      "players": [
+        {"name": "SirMerkUmAll", "score": 474},
+        {"name": "red", "score": 363},
+        {"name": "sed", "score": 355},
+        {"name": "DonPol", "score": 94}
+      ]
+    }
+  }
+} 

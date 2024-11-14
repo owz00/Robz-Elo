@@ -1,0 +1,23 @@
+{
+    "winner": "Team A",
+    "teams": {
+      "Team A": {
+        "victory_points": 169,
+        "players": [
+          {"name": "naej7", "score": 614},
+          {"name": "THE LONG SHLONG", "score": 597},
+          {"name": "ShadowFalcon", "score": 586},
+          {"name": "Taters", "score": 536},
+          {"name": "Morszczuch", "score": 508},
+          {"name": "JIMBO_177", "score": 416},
+          {"name": "Jarda Lepsi", "score": 276}
+        ]
+      },
+      "Team B": {
+        "victory_points": 28,
+        "players": [
+          {"name": "Dmitriy", "score": 750}
+        ]
+      }
+    }
+  }

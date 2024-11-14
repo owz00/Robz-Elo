@@ -1,0 +1,23 @@
+{
+  "winner": "Commonwealth / USA",
+  "teams": {
+    "Commonwealth / USA": {
+      "victory_points": 151,
+      "players": [
+        {"name": "THEAK74", "score": 853},
+        {"name": "The Grinch", "score": 764},
+        {"name": "Starly", "score": 668},
+        {"name": "Taters", "score": 372},
+        {"name": "Sir Kirby", "score": 254}
+      ]
+    },
+    "Germany (Wehrmacht/Wa..": {
+      "victory_points": 61,
+      "players": [
+        {"name": "AlphaScouser96", "score": 862},
+        {"name": "Houston", "score": 483},
+        {"name": "HMS150", "score": 480}
+      ]
+    }
+  }
+} 
