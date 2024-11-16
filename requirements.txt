@@ -4,3 +4,4 @@ pytesseract
 opencv-python
 anthropic
 loguru
+pick

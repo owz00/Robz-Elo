@@ -43,7 +43,7 @@ An Elo rating system to track player ratings based on game results. This project
 
 4. **Prepare Image Data**
 
-   Place your game score images in the designated folder. By default, images should be placed in `test_image_sets/set_1`. You can change the path in the configuration.
+   Place your game score images in the designated folder. By default, images should be placed in `image_input`. You can change the path in the configuration.
 
 ## Usage
 
