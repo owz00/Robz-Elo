@@ -17,8 +17,10 @@ def prepareData(updatedDictionary, eloDatabase):
         players = updatedDictionary[team_name]['players']
         for player in players:
             playerName = player[0]
-            newPlayerElo = player[4]
+            newPlayerElo = player[6]
             gamesPlayed = player[2] + 1  # Increment games played 
+            gamesWon = player[3]
+            gamesLost = player[4]
 
             if eloDatabase != []:
                 # Check if the player exists in the eloDatabase
@@ -28,6 +30,9 @@ def prepareData(updatedDictionary, eloDatabase):
                     # Update Elo and games played for existing player
                     player_data['Starting Elo'] = newPlayerElo
                     player_data['games played'] = gamesPlayed
+                    player_data['Games Won'] = gamesWon
+                    player_data['Games Lost'] = gamesLost
+
 
                     # Append new Elo to Elo History
                     player_data['Elo History'].append(newPlayerElo)
@@ -39,7 +44,9 @@ def prepareData(updatedDictionary, eloDatabase):
                         'Starting Elo': newPlayerElo,
                         'games played': gamesPlayed,
                         'past names': [],  # Or handle if you need specific logic for past names
-                        'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
+                        'Elo History': [newPlayerElo],  # Initialize Elo History with the first Elo value
+                        'Games Won':  gamesWon,  
+                        'Games Lost': gamesLost
                     }
                     eloDatabase["Players"].append(new_player_data)
                     logger.info(f"Added new player to database: {playerName}")
@@ -49,8 +56,11 @@ def prepareData(updatedDictionary, eloDatabase):
                     'Starting Elo': newPlayerElo,
                     'games played': gamesPlayed,
                     'past names': [],  # Or handle if you need specific logic for past names
-                    'Elo History': [newPlayerElo]  # Initialize Elo History with the first Elo value
+                    'Elo History': [newPlayerElo],  # Initialize Elo History with the first Elo value
+                    'Games Won':  gamesWon,  
+                    'Games Lost': gamesLost  
                     }
+                
                 eloDatabase["Players"].append(new_player_data)
                 logger.info(f"Added new player to database: {playerName}")
 

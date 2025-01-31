@@ -90,14 +90,20 @@ def order_data(data, eloDatabase):
             if player_data:
                 starting_elo = player_data.get("Starting Elo", 1200)
                 games_played = player_data.get("games played", 0)
+                games_won = player_data.get("games won", 0)
+                games_lost = player_data.get("games lost", 0)
             else:
                 starting_elo = 1200
                 games_played = 0
+                games_won = 0
+                games_lost = 0
 
             team_players.append([
                 player_name,
                 starting_elo,
-                games_played
+                games_played,
+                games_won,
+                games_lost
             ])
 
         playerDictionary[team_name] = {

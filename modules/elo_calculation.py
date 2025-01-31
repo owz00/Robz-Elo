@@ -227,11 +227,19 @@ def calculatePoints(playerDictionary):
         actual_score = 1 if winner == teamA_name else (0.5 if winner == 'TIE' else 0)
         newRating = player[1] + (k * pointFactor) * (actual_score - RA)
         player.append(round(newRating))
+        if winner == teamA_name:
+            player[3] += 1
+        else:
+            player[4] += 1
 
     for player in updatedPlayerDictionary[teamB_name]['players']:
         k = 50 / (1 + (player[2] / 300))
         actual_score = 1 if winner == teamB_name else (0.5 if winner == 'TIE' else 0)
         newRating = player[1] + (k * pointFactor) * (actual_score - (1 - RA))
         player.append(round(newRating))
-
+        if winner == teamB_name:
+            player[3] += 1
+        else:
+            player[4] += 1
+     
     return updatedPlayerDictionary
